@@ -9,6 +9,7 @@ namespace SafeStreets.EditorTools
 {
     /// <summary>
     /// Editor-driven construction of the 2D SafeStreets scene (top-down).
+    /// v3: persisted sprite assets (fixes invisible character), quiz zones, QuizUI.
     /// Invoke via: unity command eval 'return SafeStreets.EditorTools.SceneBuilder2D.Build();'
     /// </summary>
     public static class SceneBuilder2D
@@ -30,48 +31,56 @@ namespace SafeStreets.EditorTools
         public static string Build()
         {
             EnsureFolders();
+            var spriteDir = "Assets/Sprites";
+            if (!AssetDatabase.IsValidFolder(spriteDir))
+                AssetDatabase.CreateFolder("Assets", "Sprites");
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             var root = new GameObject("SafeStreets");
 
+            // ---- System objects first (QuizUI builds its canvas in Awake) ----
+            var quizGo = new GameObject("QuizUI");
+            quizGo.AddComponent<SafeStreets.QuizUI>();
+
             // ---- Grass base ----
-            var grass = NewSprite(root.transform, "Grass", Palette["Grass"], new Vector3(0, 0, 50), new Vector2(36, 30));
+            var grass = NewSprite(root.transform, "Grass", "grass", Palette["Grass"], new Vector3(0, 0, 50), new Vector2(36, 30));
             grass.GetComponent<SpriteRenderer>().sortingOrder = -10;
 
-            // ---- Road strip (horizontal, 6m wide) through the middle ----
-            var road = NewSprite(root.transform, "Road", Palette["Road"], new Vector3(0, 0, 0), new Vector2(36, 6));
+            // ---- Road ----
+            NewSprite(root.transform, "Road", "road", Palette["Road"], new Vector3(0, 0, 0), new Vector2(36, 6));
 
-            // ---- Center dashes (skip the crossing zone x in [-4, 4]) ----
+            // ---- Center dashes (skip the crossing zone) ----
             for (float x = -16f; x <= 16f; x += 2.4f)
             {
                 if (x > -5f && x < 5f) continue;
-                NewSprite(root.transform, $"Dash_{x:0}", Palette["Stripe"], new Vector3(x, 0, -1), new Vector2(1.4f, 0.18f));
+                NewSprite(root.transform, $"Dash_{x:0}", "stripe", Palette["Stripe"], new Vector3(x, 0, -1), new Vector2(1.4f, 0.18f));
             }
 
-            // ---- Sidewalks above and below the road ----
-            NewSprite(root.transform, "Sidewalk_N", Palette["Sidewalk"], new Vector3(0, 3.7f, 1), new Vector2(36, 1.4f));
-            NewSprite(root.transform, "Sidewalk_S", Palette["Sidewalk"], new Vector3(0, -3.7f, 1), new Vector2(36, 1.4f));
+            // ---- Sidewalks ----
+            NewSprite(root.transform, "Sidewalk_N", "stripe", Palette["Sidewalk"], new Vector3(0, 3.7f, 1), new Vector2(36, 1.4f));
+            NewSprite(root.transform, "Sidewalk_S", "stripe", Palette["Sidewalk"], new Vector3(0, -3.7f, 1), new Vector2(36, 1.4f));
 
-            // ---- Zebra crossing at x = 0 ----
+            // ---- Zebra crossing ----
             for (int i = 0; i < 7; i++)
             {
-                var z = NewSprite(root.transform, $"Zebra_{i}", Palette["Zebra"],
+                var z = NewSprite(root.transform, $"Zebra_{i}", "zebra", Palette["Zebra"],
                     new Vector3(-3.6f + i * 1.2f, 0f, -2), new Vector2(0.7f, 5.6f));
                 z.GetComponent<SpriteRenderer>().sortingOrder = -4;
             }
 
             // ---- Labeled buildings ----
-            MakeBuilding(root.transform, "SCHOOL", new Vector3(-11, 8.5f), new Vector2(9, 5), Palette["School"]);
-            MakeBuilding(root.transform, "HOME", new Vector3(11, -8.5f), new Vector2(8, 5), Palette["Home"]);
-            MakeBuilding(root.transform, "PARK", new Vector3(12, 8.5f), new Vector2(9, 5), Palette["Park"]);
-            MakeBuilding(root.transform, "SHOP", new Vector3(-11, -8.5f), new Vector2(8, 5), Palette["Shop"]);
+            MakeBuilding(root.transform, "SCHOOL", new Vector3(-11, 8.5f), new Vector2(9, 5), "school", Palette["School"]);
+            MakeBuilding(root.transform, "HOME", new Vector3(11, -8.5f), new Vector2(8, 5), "home", Palette["Home"]);
+            MakeBuilding(root.transform, "PARK", new Vector3(12, 8.5f), new Vector2(9, 5), "park", Palette["Park"]);
+            MakeBuilding(root.transform, "SHOP", new Vector3(-11, -8.5f), new Vector2(8, 5), "shop", Palette["Shop"]);
 
-            // ---- Kid player at the bottom sidewalk ----
-            var player = NewSprite(root.transform, "Player", Palette["Kid"], new Vector3(0, -3.7f, -10), new Vector2(1.0f, 1.0f));
+            // ---- Kid player at the bottom sidewalk (spawn reset every build) ----
+            var player = NewSprite(root.transform, "Player", "kid", Palette["Kid"], new Vector3(0, -3.7f, -10), new Vector2(1.0f, 1.0f));
+            player.tag = "Player";
             var rb = player.AddComponent<Rigidbody2D>();
             var col = player.AddComponent<CapsuleCollider2D>();
             col.size = new Vector2(0.8f, 0.9f);
-            player.AddComponent<PlayerController2D>();
+            player.AddComponent<SafeStreets.PlayerController2D>();
 
             // ---- Camera ----
             var camGo = new GameObject("MainCamera2D");
@@ -81,13 +90,20 @@ namespace SafeStreets.EditorTools
             cam.orthographicSize = 8f;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.30f, 0.42f, 0.30f);
-            camGo.AddComponent<CameraFollow2D>().target = player.transform;
+            camGo.AddComponent<SafeStreets.CameraFollow2D>().target = player.transform;
             camGo.transform.position = new Vector3(player.transform.position.x, player.transform.position.y, -10f);
+
+            // ---- Quiz zones (walk-in triggers) ----
+            MakeQuizZone(root.transform, "QuizZone_Zebra", "zebra", new Vector3(0, 0.5f), new Vector2(7.5f, 4.5f));
+            MakeQuizZone(root.transform, "QuizZone_School", "school", new Vector3(-11, 5.6f), new Vector2(9.5f, 3f));
+            MakeQuizZone(root.transform, "QuizZone_Park", "park", new Vector3(12, 5.6f), new Vector2(9.5f, 3f));
+            MakeQuizZone(root.transform, "QuizZone_Home", "home", new Vector3(11, -5.6f), new Vector2(8.5f, 3f));
+            MakeQuizZone(root.transform, "QuizZone_Shop", "shop", new Vector3(-11, -5.6f), new Vector2(8.5f, 3f));
 
             // ---- Title ----
             var titleGo = new GameObject("ZoneTitle");
             var tmp = titleGo.AddComponent<TextMesh>();
-            tmp.text = "SAFE STREET - cross at the zebra!";
+            tmp.text = "SAFE STREET - walk into the glowing zones!";
             tmp.characterSize = 0.28f;
             tmp.fontSize = 40;
             tmp.anchor = TextAnchor.MiddleCenter;
@@ -98,27 +114,69 @@ namespace SafeStreets.EditorTools
             EditorSceneManager.SaveScene(scene, "Assets/Scenes/SafeStreets.unity");
 
             var report = new StringBuilder();
-            report.Append("scene=SafeStreets roots=").Append(scene.rootCount);
+            report.Append("scene=SafeStreets v3 roots=").Append(scene.rootCount);
             return report.ToString();
         }
 
-        private static GameObject NewSprite(Transform parent, string name, Color color, Vector3 pos, Vector2 size)
+        /// <summary>Persisted sprite asset per key — survives save/reload (fixes invisibility).</summary>
+        private static GameObject NewSprite(Transform parent, string name, string spriteKey, Color color,
+            Vector3 pos, Vector2 size)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent);
             go.transform.position = pos;
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 1f);
-            sr.sprite.name = name + "_tex";
-            sr.color = color;
+            sr.sprite = GetOrCreateSprite(spriteKey, color);
             sr.drawMode = SpriteDrawMode.Sliced;
             sr.size = size;
             return go;
         }
 
-        private static GameObject MakeBuilding(Transform parent, string label, Vector2 pos, Vector2 size, Color color)
+        private static readonly Dictionary<string, Sprite> _spriteCache = new Dictionary<string, Sprite>();
+
+        private static Sprite GetOrCreateSprite(string key, Color color)
         {
-            var go = NewSprite(parent, "Building_" + label, color, new Vector3(pos.x, pos.y, 1), size);
+            if (_spriteCache.TryGetValue(key, out var cached) && cached != null) return cached;
+
+            string path = $"Assets/Sprites/{key}.png";
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            if (tex == null)
+            {
+                tex = new Texture2D(8, 8, TextureFormat.RGBA32, false);
+                var px = new Color[8 * 8];
+                for (int i = 0; i < px.Length; i++) px[i] = color;
+                tex.SetPixels(px);
+                tex.Apply();
+                System.IO.File.WriteAllBytes(path, tex.EncodeToPNG());
+                AssetDatabase.ImportAsset(path);
+            }
+
+            var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+            var importer = (TextureImporter)AssetImporter.GetAtPath(path);
+            var settings = new TextureImporterSettings();
+            importer.ReadTextureSettings(settings);
+            if (settings.spriteMeshType != SpriteMeshType.FullRect)
+            {
+                // Sliced draw mode requires FullRect; enforce on every build (fixes Tight default).
+                settings.spriteMeshType = SpriteMeshType.FullRect;
+                importer.SetTextureSettings(settings);
+                importer.SaveAndReimport();
+                sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+            }
+
+            _spriteCache[key] = sprite;
+            return sprite;
+        }
+
+        /// <summary>Zone-glow sprite uses the same persisted-asset pipeline (white, tinted at runtime).</summary>
+        internal static Sprite GetOrCreateSpriteForZone(string key)
+        {
+            return GetOrCreateSprite(key, Color.white);
+        }
+
+        private static GameObject MakeBuilding(Transform parent, string label, Vector2 pos, Vector2 size, string spriteKey, Color color)
+        {
+            var go = NewSprite(parent, "Building_" + label, spriteKey, color, new Vector3(pos.x, pos.y, 1), size);
             var box = go.AddComponent<BoxCollider2D>();
             box.size = size;
 
@@ -132,6 +190,31 @@ namespace SafeStreets.EditorTools
             tm.anchor = TextAnchor.MiddleCenter;
             tm.color = new Color(1f, 1f, 1f, 0.92f);
             return go;
+        }
+
+        private static void MakeQuizZone(Transform parent, string name, string zoneId, Vector2 pos, Vector2 size)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent);
+            go.transform.position = new Vector3(pos.x, pos.y, -5);
+
+            // faint glowing outline so kids can see the zone
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = GetOrCreateSpriteForZone("zone-glow");
+            sr.color = new Color(1f, 0.9f, 0.4f, 0.25f);
+            sr.drawMode = SpriteDrawMode.Sliced;
+            sr.size = size;
+            sr.sortingOrder = -3;
+
+            var box = go.AddComponent<BoxCollider2D>();
+            box.isTrigger = true;
+            box.size = size;
+
+            var zone = go.AddComponent<SafeStreets.QuizZone>();
+            zone.zoneId = zoneId;
+            var def = SafeStreets.QuestionBank.ByZoneId(zoneId);
+            zone.title = def != null ? def.title : zoneId;
+            zone.activityId = def != null ? def.activityId : "";
         }
 
         private static void EnsureFolders()
