@@ -25,6 +25,34 @@ unity command get_scene_hierarchy --project-path .
   `eval 'UnityEngine.Application.runInBackground = true;'`. Set PlayerSettings.runInBackground BEFORE entering play.
 - Claude Code gateway (electronhub) was down → drove Unity via `unity command eval` C# instead. Works great.
 
+## Unity CLI deep reference (session-3 findings — read before driving the Editor)
+
+- **The plugin ships 32 Unity skills** at
+  `C:\Users\dongt\.claude\plugins\cache\unity-agent-plugin\unity\0.1.8-beta\skills\`
+  (2d-pixel-perfect, create-2d-physics, ui-ugui, sprite-editor, optimize-text-mesh-pro,
+  manage-sprite-atlas, ...). The project-local copy of the deep skills lives in
+  `unity/.claude/skills/` (unity-cli + unity-pipeline). READ the relevant one before
+  building that feature — they encode Unity-version-specific API rules.
+- **The frozen-play-mode mystery is SOLVED officially**: `unity command set_autotick`
+  forces Editor ticks while unfocused (16ms interval). Call ONCE per Editor session
+  before `editor_play` (persist=true default survives domain reloads). Our Win32
+  focus hack is obsolete. `Application.runInBackground` is the second switch.
+- **`unity command wait_for`** is server-side proof of life:
+  `wait_for -- --condition '{"member":"UnityEngine.Time.frameCount","op":"changed"}' --timeout_s 10`
+  → `met:true, framesObserved>0` = live game; `timedOut:true` = frozen. Replaces
+  double-polling frameCount by hand.
+- **`capture_game_view -- --source screen --save_path <project-relative path>`** saves
+  to a file instead of inlining base64. `--source screen` includes overlay UI.
+- **eval rules (from the official skill)**: eval compiles a STATEMENT BLOCK — no `using`
+  directives (compiler reads them as disposal statements, CS0210), types must be fully
+  qualified (bare `Object` is ambiguous). `return` value arrives in `data.result.result`.
+  eval's own `timeout` is MILLISECONDS; `unity command --timeout` is SECONDS — pass
+  eval-specific flags after a `--` fence.
+- **`unity status --until-ready`** instead of sleep-loops after editor_play (domain reload
+  drops the pipeline listener briefly).
+- Command names differ between pipeline versions — confirm with `unity command --query <name> --format json`
+  which also returns each command's full parameter schema.
+
 ## KNOWN ISSUES — status after session 2
 
 1. ~~Character invisible~~ **FIXED (session 3, PROVEN WITH PIXELS).** TWO stacked bugs:
