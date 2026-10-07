@@ -1,296 +1,227 @@
 using System.Collections.Generic;
-using System.Text;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.Tilemaps;
 
 namespace SafeStreets.EditorTools
 {
     /// <summary>
-    /// Editor-driven construction of the 2D SafeStreets scene (top-down).
-    /// v3: persisted sprite assets (fixes invisible character), quiz zones, QuizUI.
+    /// Scene construction following Game Code Library's Top Down Unity 2D #3-#4:
+    /// real Tilemaps (Ground + Collision layers), sorting layers, sprite player.
     /// Invoke via: unity command eval 'return SafeStreets.EditorTools.SceneBuilder2D.Build();'
     /// </summary>
     public static class SceneBuilder2D
     {
-        private static readonly Dictionary<string, Color> Palette = new Dictionary<string, Color>
+        // ---- Sorting layers (tutorial #3) ----
+        private static readonly string[] Layers = { "Ground", "WalkInFront", "Collision", "Player", "WalkBehind", "Decor" };
+
+        private static TileBase Tile(string assetName, int index)
         {
-            ["Grass"] = new Color(0.42f, 0.68f, 0.38f),
-            ["Road"] = new Color(0.30f, 0.31f, 0.33f),
-            ["Sidewalk"] = new Color(0.78f, 0.78f, 0.74f),
-            ["Stripe"] = new Color(0.95f, 0.95f, 0.90f),
-            ["Zebra"] = Color.white,
-            ["Kid"] = new Color(0.95f, 0.55f, 0.20f),
-            ["School"] = new Color(0.75f, 0.35f, 0.30f),
-            ["Home"] = new Color(0.90f, 0.75f, 0.45f),
-            ["Park"] = new Color(0.36f, 0.60f, 0.44f),
-            ["Shop"] = new Color(0.55f, 0.60f, 0.72f),
-        };
+            var path = $"Assets/Tilesets/{assetName}";
+            var sprite = AssetDatabase.LoadAssetAtPath<Sprite>($"{path}#{index}");
+            if (sprite == null) return null;
+            var tile = ScriptableObject.CreateInstance<Tile>();
+            tile.sprite = sprite;
+            return tile;
+        }
+
+        private static TileBase FindTile(string assetName, string spriteName)
+        {
+            var path = $"Assets/Tilesets/{assetName}";
+            var assets = AssetDatabase.LoadAllAssetsAtPath(path);
+            foreach (var a in assets)
+                if (a is Sprite s && s.name == spriteName)
+                {
+                    var tile = ScriptableObject.CreateInstance<Tile>();
+                    tile.sprite = s;
+                    return tile;
+                }
+            return null;
+        }
 
         public static string Build()
         {
-            EnsureFolder("Assets/Scenes");
-            var spriteDir = "Assets/Sprites";
-            if (!AssetDatabase.IsValidFolder(spriteDir))
-                AssetDatabase.CreateFolder("Assets", "Sprites");
+            // ---- Sorting layers (idempotent) ----
+            var tagManager = new UnityEditor.SerializedObject(AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset")[0]);
+            var layersProp = tagManager.FindProperty("layers");
+            var existing = new HashSet<string>();
+            for (int i = 0; i < 32; i++)
+                if (layersProp.GetArrayElementAtIndex(i).stringValue is string s && !string.IsNullOrEmpty(s))
+                    existing.Add(s);
+            foreach (var layer in Layers)
+            {
+                if (existing.Contains(layer)) continue;
+                for (int i = 8; i < 32; i++)
+                {
+                    var el = layersProp.GetArrayElementAtIndex(i);
+                    if (string.IsNullOrEmpty(el.stringValue))
+                    {
+                        el.stringValue = layer;
+                        break;
+                    }
+                }
+            }
+            tagManager.ApplyModifiedProperties();
 
-            Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            // ---- "Player" tag exists by default; ensure it does ----
+            var tagManager2 = new UnityEditor.SerializedObject(AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset")[0]);
+            var tagsProp = tagManager2.FindProperty("tags");
+            bool hasPlayer = false;
+            for (int i = 0; i < tagsProp.arraySize; i++)
+                if (tagsProp.GetArrayElementAtIndex(i).stringValue == "Player") hasPlayer = true;
+            if (!hasPlayer)
+            {
+                tagsProp.InsertArrayElementAtIndex(tagsProp.arraySize);
+                tagsProp.GetArrayElementAtIndex(tagsProp.arraySize - 1).stringValue = "Player";
+            }
+            tagManager2.ApplyModifiedProperties();
+
+            // ---- Scene ----
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             var root = new GameObject("SafeStreets");
 
-            // ---- Interaction system ----
-            var imGo = new GameObject("InteractionManager");
-            imGo.AddComponent<SafeStreets.InteractionManager>();
+            // ---- Grid + Tilemaps (tutorial #3) ----
+            var gridGo = new GameObject("Grid");
+            gridGo.transform.SetParent(root.transform);
+            var grid = gridGo.AddComponent<Grid>();
+            grid.cellSize = new Vector3(1, 1, 0);
 
-            // ---- World tiles from the pack's Field tileset (16x16, world tile = 1 unit) ----
-            // TilesetField.png 80x240 = 5 cols x 15 rows. Known-good cells (col,row) —
-            // grass patches, dirt path, flowers; verified by cropping before wiring.
-            var grass = GetOrCreateTile("tileset_field.png", "t_grass", 2, 10);
-            var grass2 = GetOrCreateTile("tileset_field.png", "t_grass2", 3, 10);
-            var flower = GetOrCreateTile("tileset_field.png", "t_flower", 1, 13);
-            var dirt = GetOrCreateTile("tileset_field.png", "t_dirt", 0, 10);
+            var groundGo = new GameObject("Ground");
+            groundGo.transform.SetParent(gridGo.transform);
+            var ground = groundGo.AddComponent<Tilemap>();
+            var groundR = groundGo.AddComponent<TilemapRenderer>();
+            groundR.sortingLayerName = "Ground";
 
-            // Ground: 40 x 28 tiles of grass (1 unit per tile), deterministic variation
-            int gw = 40, gh = 28;
-            var groundRoot = new GameObject("GroundTiles");
-            groundRoot.transform.SetParent(root.transform);
+            var decorGo = new GameObject("Decor");
+            decorGo.transform.SetParent(gridGo.transform);
+            var decor = decorGo.AddComponent<Tilemap>();
+            var decorR = decorGo.AddComponent<TilemapRenderer>();
+            decorR.sortingLayerName = "WalkInFront";
+
+            var collisionGo = new GameObject("Collision");
+            collisionGo.transform.SetParent(gridGo.transform);
+            var collision = collisionGo.AddComponent<Tilemap>();
+            var collisionR = collisionGo.AddComponent<TilemapRenderer>();
+            collisionR.sortingLayerName = "Collision";
+            var collisionTc = collisionGo.AddComponent<TilemapCollider2D>();
+
+            // ---- Fill Ground with Floor tiles — VERIFIED cell indices (pixel-scanned) ----
+            // Grass: i277 (c13_r13, 256/256 green), i268, i265 · Dirt path band: i319-i328 (row 11)
+            // White floor: i396-cells (row 7) used for zebra stripes
+            TileBase grass = FindTile("TilesetFloor.png", "TilesetFloor_277") ?? Tile("TilesetFloor.png", 277);
+            TileBase grass2 = FindTile("TilesetFloor.png", "TilesetFloor_268") ?? Tile("TilesetFloor.png", 268);
+            TileBase flower = FindTile("TilesetFloor.png", "TilesetFloor_265") ?? Tile("TilesetFloor.png", 265);
+            TileBase path = FindTile("TilesetFloor.png", "TilesetFloor_323") ?? Tile("TilesetFloor.png", 323);
+            TileBase white = FindTile("TilesetFloor.png", "TilesetFloor_399") ?? Tile("TilesetFloor.png", 399);
+
+            int gw = 40, gh = 26;
             for (int ty = -gh / 2; ty < gh / 2; ty++)
             {
                 for (int tx = -gw / 2; tx < gw / 2; tx++)
                 {
-                    // pseudo-random but deterministic variation
                     int h = (tx * 73856093) ^ (ty * 19349663);
-                    Sprite s = ((h & 15) == 0) ? flower : (((h >> 4) & 7) == 0 ? grass2 : grass);
-                    var t = new GameObject($"g{tx}_{ty}");
-                    t.transform.SetParent(groundRoot.transform);
-                    t.transform.position = new Vector3(tx + 0.5f, ty + 0.5f, 50f);
-                    var sr = t.AddComponent<SpriteRenderer>();
-                    sr.sprite = s;
-                    sr.sortingOrder = -10;
+                    TileBase t = ((h & 15) == 0) ? flower : (((h >> 4) & 7) == 0 ? grass2 : grass);
+                    if (t != null) ground.SetTile(new Vector3Int(tx, ty, 0), t);
                 }
             }
 
-            // ---- Road: dirt path strip, 6 tiles tall, through the middle ----
-            var roadRoot = new GameObject("RoadTiles");
-            roadRoot.transform.SetParent(root.transform);
+            // ---- Road: path tiles across the middle, 6 tall ----
             for (int ty = -3; ty < 3; ty++)
-            {
                 for (int tx = -gw / 2; tx < gw / 2; tx++)
-                {
-                    var t = new GameObject($"r{tx}_{ty}");
-                    t.transform.SetParent(roadRoot.transform);
-                    t.transform.position = new Vector3(tx + 0.5f, ty + 0.5f, -5f);
-                    var sr = t.AddComponent<SpriteRenderer>();
-                    sr.sprite = dirt;
-                    sr.sortingOrder = -8;
-                }
-            }
+                    if (path != null) ground.SetTile(new Vector3Int(tx, ty, 0), path);
 
-            // ---- Zebra crossing: white paint stripes ON the road (thin boxes over dirt) ----
-            var stripe = GetOrCreateTile("tileset_field.png", "t_stripe", 2, 10); // reuse grass white? no — use plain white
-            for (int i = 0; i < 7; i++)
-            {
-                var z = new GameObject($"Zebra_{i}");
-                z.transform.SetParent(root.transform);
-                z.transform.position = new Vector3(-3.6f + i * 1.2f, 0f, -2f);
-                var sr = z.AddComponent<SpriteRenderer>();
-                sr.sprite = UnityEngine.Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 1f);
-                sr.color = new Color(0.95f, 0.95f, 0.92f);
-                sr.drawMode = SpriteDrawMode.Sliced;
-                sr.size = new Vector2(0.7f, 5.6f);
-                sr.sortingOrder = -4;
-            }
+            // ---- Zebra stripes: verified white floor tiles across the path ----
+            if (white != null)
+                for (int i = 0; i < 7; i++)
+                    for (int ty = -2; ty <= 2; ty++)
+                        decor.SetTile(new Vector3Int(-4 + i, ty, 0), white);
 
-            // ---- Sidewalks: lighter dirt border rows ----
-            for (int tx = -gw / 2; tx < gw / 2; tx++)
-            {
-                foreach (var yy in new[] { 3.7f, -3.7f })
-                {
-                    var t = new GameObject($"sw{tx}_{yy:0.0}");
-                    t.transform.SetParent(root.transform);
-                    t.transform.position = new Vector3(tx + 0.5f, yy, -3f);
-                    var sr = t.AddComponent<SpriteRenderer>();
-                    sr.sprite = grass2;
-                    sr.sortingOrder = -6;
-                }
-            }
-
-            // ---- Labeled buildings (all interactable) ----
-            MakeBuilding(root.transform, "SCHOOL", new Vector3(-11, 8.5f), new Vector2(9, 5), "school", Palette["School"], "your school");
-            MakeBuilding(root.transform, "HOME", new Vector3(11, -8.5f), new Vector2(8, 5), "home", Palette["Home"], "your home");
-            MakeBuilding(root.transform, "PARK", new Vector3(12, 8.5f), new Vector2(9, 5), "park", Palette["Park"], "the park");
-            MakeBuilding(root.transform, "SHOP", new Vector3(-11, -8.5f), new Vector2(8, 5), "shop", Palette["Shop"], "the corner shop");
-
-            // ---- Kid player: Ninja Adventure "Boy" walk sheet (4x4: down/left/right/up) ----
-            const string SheetPath = "Assets/Sprites/Ninja/boy_walk.png";
-            const string ShadowPath = "Assets/Sprites/Ninja/boy_shadow.png";
-
+            // ---- Player (tutorial #1/#2): sprite from sliced sheet, collider, animator ----
             var player = new GameObject("Player");
             player.transform.SetParent(root.transform);
-            player.transform.position = new Vector3(0, -3.7f, -10f);
+            player.transform.position = new Vector3(0f, -3.7f, 0f);
             player.tag = "Player";
-            var psr = player.AddComponent<SpriteRenderer>();
-            psr.sprite = GetOrCreateSprite("kid", Palette["Kid"]);   // fallback until sheet sliced
-            psr.sortingOrder = 10;                                    // in front of world
-            var psc = psr; // alias for readability below
-
-            var sheetImporter = (TextureImporter)AssetImporter.GetAtPath(SheetPath);
-            if (sheetImporter != null && sheetImporter.spriteImportMode != SpriteImportMode.Multiple)
-            {
-                SetupWalkSheet(sheetImporter);
-            }
+            var sr = player.AddComponent<SpriteRenderer>();
+            sr.sortingLayerName = "Player";
+            var boyIdle = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Tilesets/boy_idle.png#0");
+            sr.sprite = boyIdle != null ? boyIdle : AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Tilesets/boy_walk.png#0");
 
             var rb = player.AddComponent<Rigidbody2D>();
             var col = player.AddComponent<CapsuleCollider2D>();
-            col.size = new Vector2(0.55f, 0.45f);   // 16px sprite: smaller feet-area collider
-            col.offset = new Vector2(0f, -0.15f);
-            var controller = player.AddComponent<SafeStreets.PlayerController2D>();
+            col.size = new Vector2(0.5f, 0.4f);
+            col.offset = new Vector2(0f, -0.2f);
+            player.AddComponent<SafeStreets.PlayerController2D>();
 
             var animator = player.AddComponent<SafeStreets.PlayerAnimator>();
-            // SeparateAnim/Walk layout: row0=down, row1=left, row2=right, row3=up
-            animator.walkDown = LoadRow(SheetPath, "down");
-            animator.walkUp = LoadRow(SheetPath, "up");
-            animator.walkLeft = LoadRow(SheetPath, "left");
-            animator.walkRight = LoadRow(SheetPath, "right");
+            var walkFrames = new Sprite[16];
+            var walkAssets = AssetDatabase.LoadAllAssetsAtPath("Assets/Tilesets/boy_walk.png");
+            foreach (var a in walkAssets)
+                if (a is Sprite s && s.name.StartsWith("boy_walk_"))
+                    if (int.TryParse(s.name.Substring("boy_walk_".Length), out int idx) && idx < 16)
+                        walkFrames[idx] = s;
+            animator.frames = walkFrames;
 
-            // drop shadow (the pack's own shadow sprite) — sells the 2.5D look
+            // ---- Shadow ----
             var shadow = new GameObject("Shadow");
             shadow.transform.SetParent(player.transform);
-            shadow.transform.localPosition = new Vector3(0f, -0.28f, 1f);
+            shadow.transform.localPosition = new Vector3(0f, -0.3f, 0f);
             var ssr = shadow.AddComponent<SpriteRenderer>();
-            var shadowTex = AssetDatabase.LoadAssetAtPath<Sprite>(ShadowPath);
-            if (shadowTex != null) ssr.sprite = shadowTex;
-            ssr.sortingOrder = 9;
-            ssr.color = new Color(0f, 0f, 0f, 0.4f);
+            ssr.sprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Tilesets/shadow.png");
+            ssr.sortingLayerName = "WalkInFront";
+            ssr.color = new Color(0f, 0f, 0f, 0.45f);
 
-            // ---- Camera ----
-            var camGo = new GameObject("MainCamera2D");
+            // ---- Buildings (Collision layer boxes, interactable) ----
+            MakeBuilding(root.transform, "SCHOOL", new Vector2(-11, 8.5f), new Vector2(9, 5), "your school");
+            MakeBuilding(root.transform, "HOME", new Vector2(11, -8.5f), new Vector2(8, 5), "your home");
+            MakeBuilding(root.transform, "PARK", new Vector2(12, 8.5f), new Vector2(9, 5), "the park");
+            MakeBuilding(root.transform, "SHOP", new Vector2(-11, -8.5f), new Vector2(8, 5), "the corner shop");
+
+            // ---- InteractionManager ----
+            var imGo = new GameObject("InteractionManager");
+            imGo.AddComponent<SafeStreets.InteractionManager>();
+
+            // ---- Camera (tutorial #4 style follow) ----
+            var camGo = new GameObject("MainCamera");
             camGo.tag = "MainCamera";
             var cam = camGo.AddComponent<Camera>();
             cam.orthographic = true;
-            cam.orthographicSize = 4.5f;   // tighter view: 16px sprites, was 8 for big tiles
+            cam.orthographicSize = 5.4f;    // ~11 tiles tall at 1080p: nice close pixel view
             cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = new Color(0.30f, 0.42f, 0.30f);
+            cam.backgroundColor = new Color(0.20f, 0.28f, 0.20f);
             camGo.AddComponent<SafeStreets.CameraFollow2D>().target = player.transform;
             camGo.transform.position = new Vector3(player.transform.position.x, player.transform.position.y, -10f);
-
-            // ---- Quiz zones REMOVED (replaced by Interactable + InteractionManager) ----
 
             // ---- Title ----
             var titleGo = new GameObject("ZoneTitle");
             var tmp = titleGo.AddComponent<TextMesh>();
             tmp.text = "SAFE STREET - walk up to a building and press SPACE!";
-            tmp.characterSize = 0.28f;
-            tmp.fontSize = 40;
+            tmp.characterSize = 0.22f;
+            tmp.fontSize = 36;
             tmp.anchor = TextAnchor.MiddleCenter;
             tmp.color = Color.white;
             titleGo.transform.SetParent(root.transform);
-            titleGo.transform.position = new Vector3(0, 2.2f, -6);
+            titleGo.transform.position = new Vector3(0, 2.2f, 0f);
+            titleGo.GetComponent<MeshRenderer>().sortingLayerName = "Decor";
 
             EditorSceneManager.SaveScene(scene, "Assets/Scenes/SafeStreets.unity");
-
-            var report = new StringBuilder();
-            report.Append("scene=SafeStreets v3 roots=").Append(scene.rootCount);
-            return report.ToString();
+            return $"scene=SafeStreets roots={scene.rootCount} tilesGround={(ground.size.x * ground.size.y)}";
         }
 
-        /// <summary>Persisted sprite asset per key — survives save/reload (fixes invisibility).</summary>
-        private static GameObject NewSprite(Transform parent, string name, string spriteKey, Color color,
-            Vector3 pos, Vector2 size)
+        private static void MakeBuilding(Transform parent, string label, Vector2 pos, Vector2 size, string interactLabel)
         {
-            var go = new GameObject(name);
+            var go = new GameObject("Building_" + label);
             go.transform.SetParent(parent);
-            go.transform.position = pos;
+            go.transform.position = new Vector3(pos.x, pos.y, 0f);
+
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = GetOrCreateSprite(spriteKey, color);
+            sr.sprite = UnityEngine.Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 16f);
+            sr.color = new Color(0.45f, 0.36f, 0.30f);   // muted wood-brown placeholder
             sr.drawMode = SpriteDrawMode.Sliced;
             sr.size = size;
-            return go;
-        }
+            sr.sortingLayerName = "Collision";
 
-        private static readonly Dictionary<string, Sprite> _spriteCache = new Dictionary<string, Sprite>();
-
-        private static Sprite GetOrCreateSprite(string key, Color color)
-        {
-            if (_spriteCache.TryGetValue(key, out var cached) && cached != null) return cached;
-
-            string path = $"Assets/Sprites/{key}.png";
-            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
-            if (tex == null)
-            {
-                tex = new Texture2D(8, 8, TextureFormat.RGBA32, false);
-                var px = new Color[8 * 8];
-                for (int i = 0; i < px.Length; i++) px[i] = color;
-                tex.SetPixels(px);
-                tex.Apply();
-                System.IO.File.WriteAllBytes(path, tex.EncodeToPNG());
-                AssetDatabase.ImportAsset(path);
-            }
-
-            var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
-            var importer = (TextureImporter)AssetImporter.GetAtPath(path);
-            var settings = new TextureImporterSettings();
-            importer.ReadTextureSettings(settings);
-            if (settings.spriteMeshType != SpriteMeshType.FullRect)
-            {
-                // Sliced draw mode requires FullRect; enforce on every build (fixes Tight default).
-                settings.spriteMeshType = SpriteMeshType.FullRect;
-                importer.SetTextureSettings(settings);
-                importer.SaveAndReimport();
-                sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
-            }
-
-            _spriteCache[key] = sprite;
-            return sprite;
-        }
-
-        /// <summary>Slice a 16x16 walk sheet (7 rows x 4 cols) into per-row sprite arrays.</summary>
-        private static void SetupWalkSheet(TextureImporter importer)
-        {
-            importer.textureType = TextureImporterType.Sprite;
-            importer.spriteImportMode = SpriteImportMode.Multiple;
-            importer.filterMode = FilterMode.Point;
-            importer.mipmapEnabled = false;
-            importer.textureCompression = TextureImporterCompression.Uncompressed;
-
-            var meta = new System.Collections.Generic.List<SpriteMetaData>();
-            string[] names = { "down", "up", "left", "right", "rundown", "runup", "runleft" };
-            for (int row = 0; row < 7; row++)
-            {
-                for (int col = 0; col < 4; col++)
-                {
-                    meta.Add(new SpriteMetaData
-                    {
-                        name = $"{names[row]}{col}",
-                        rect = new Rect(col * 16, row * 16, 16, 16),
-                        alignment = (int)SpriteAlignment.Center,
-                        pivot = new Vector2(0.5f, 0.5f),
-                    });
-                }
-            }
-            importer.spritesheet = meta.ToArray();
-            importer.SaveAndReimport();
-        }
-
-        /// <summary>Load the 4 frames of one walk row from the sliced sheet.</summary>
-        private static Sprite[] LoadRow(string sheetPath, string rowName)
-        {
-            var assets = AssetDatabase.LoadAllAssetsAtPath(sheetPath);
-            var row = new Sprite[4];
-            foreach (var a in assets)
-            {
-                if (a is Sprite s && s.name.StartsWith(rowName))
-                {
-                    if (int.TryParse(s.name.Substring(rowName.Length), out int idx) && idx >= 0 && idx < 4)
-                        row[idx] = s;
-                }
-            }
-            return row;
-        }
-
-        private static GameObject MakeBuilding(Transform parent, string label, Vector2 pos, Vector2 size, string spriteKey, Color color, string interactLabel)
-        {
-            var go = NewSprite(parent, "Building_" + label, spriteKey, color, new Vector3(pos.x, pos.y, 1), size);
             var box = go.AddComponent<BoxCollider2D>();
             box.size = size;
             go.AddComponent<SafeStreets.Interactable>().label = interactLabel;
@@ -300,77 +231,11 @@ namespace SafeStreets.EditorTools
             labelGo.transform.localPosition = Vector3.zero;
             var tm = labelGo.AddComponent<TextMesh>();
             tm.text = label;
-            tm.characterSize = 0.22f;
-            tm.fontSize = 36;
+            tm.characterSize = 0.18f;
+            tm.fontSize = 32;
             tm.anchor = TextAnchor.MiddleCenter;
-            tm.color = new Color(1f, 1f, 1f, 0.92f);
-            return go;
-        }
-
-            // ---- (quiz zone builder removed — interaction system replaced it) ----
-
-        /// <summary>
-        /// Persisted world tile: crop a 16x16 region from a tileset sheet into its own
-        /// sprite asset (Assets/Sprites/Tiles/&lt;name&gt;.png). Cached per name.
-        /// </summary>
-        private static Sprite GetOrCreateTile(string tilesetFile, string name, int col, int row)
-        {
-            string path = $"Assets/Sprites/Tiles/{name}.png";
-            var existing = AssetDatabase.LoadAssetAtPath<Sprite>(path);
-            if (existing != null) return existing;
-
-            var sheetPath = $"Assets/Sprites/Ninja/{tilesetFile}";
-            var sheet = AssetDatabase.LoadAssetAtPath<Sprite>(sheetPath);
-            var sheetImp = (TextureImporter)AssetImporter.GetAtPath(sheetPath);
-            if (sheet == null || sheetImp == null || !sheetImp.isReadable)
-            {
-                // import (or re-import) tileset as readable single sprite
-                if (sheetImp != null)
-                {
-                    sheetImp.textureType = TextureImporterType.Sprite;
-                    sheetImp.spriteImportMode = SpriteImportMode.Single;
-                    sheetImp.filterMode = FilterMode.Point;
-                    sheetImp.mipmapEnabled = false;
-                    sheetImp.textureCompression = TextureImporterCompression.Uncompressed;
-                    sheetImp.isReadable = true;   // needed for GetPixels when cropping tiles
-                    sheetImp.SaveAndReimport();
-                    sheet = AssetDatabase.LoadAssetAtPath<Sprite>(sheetPath);
-                }
-            }
-            if (sheet == null) return null;
-
-            var tex = sheet.texture;
-            var tile = new Texture2D(16, 16, TextureFormat.RGBA32, false);
-            tile.filterMode = FilterMode.Point;
-            var srcY = tex.height - (row + 1) * 16;   // texture coords are bottom-up
-            tile.SetPixels(tex.GetPixels(col * 16, srcY, 16, 16));
-            tile.Apply();
-
-            EnsureFolder("Assets/Sprites/Tiles");
-            System.IO.File.WriteAllBytes(path, tile.EncodeToPNG());
-            AssetDatabase.ImportAsset(path);
-            var imp2 = (TextureImporter)AssetImporter.GetAtPath(path);
-            imp2.textureType = TextureImporterType.Sprite;
-            imp2.spriteImportMode = SpriteImportMode.Single;
-            imp2.filterMode = FilterMode.Point;
-            imp2.mipmapEnabled = false;
-            imp2.textureCompression = TextureImporterCompression.Uncompressed;
-            var st = new TextureImporterSettings();
-            imp2.ReadTextureSettings(st);
-            st.spriteMeshType = SpriteMeshType.FullRect;
-            imp2.SetTextureSettings(st);
-            imp2.SaveAndReimport();
-            return AssetDatabase.LoadAssetAtPath<Sprite>(path);
-        }
-
-        private static void EnsureFolder(string path)
-        {
-            if (!AssetDatabase.IsValidFolder(path))
-            {
-                var parent = path.Substring(0, path.LastIndexOf('/'));
-                var leaf = path.Substring(path.LastIndexOf('/') + 1);
-                AssetDatabase.CreateFolder(parent, leaf);
-            }
+            tm.color = new Color(1f, 1f, 1f, 0.95f);
+            labelGo.GetComponent<MeshRenderer>().sortingLayerName = "Decor";
         }
     }
 }
