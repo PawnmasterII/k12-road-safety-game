@@ -18,6 +18,9 @@ namespace SafeStreets
         private Rigidbody2D _rb;
         private Vector2 _face = Vector2.up;
 
+        /// <summary>Last non-zero movement direction (for animator facing).</summary>
+        public Vector2 CurrentMove { get; private set; }
+
         private void Awake()
         {
             _rb = GetComponent<Rigidbody2D>();
@@ -49,9 +52,12 @@ namespace SafeStreets
                 _face = move;
             }
 
+            // With the animated sprite we never rotate the transform — the animator
+            // picks the facing row instead (rotating would tip the top-down sprite).
+            if (move.sqrMagnitude > 0.01f) CurrentMove = move;
+            else CurrentMove = Vector2.zero;
+
             _rb.linearVelocity = move * speed;
-            if (move.sqrMagnitude > 0.01f)
-                transform.up = _face;   // face the walking direction
         }
     }
 }
