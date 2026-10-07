@@ -1,0 +1,6 @@
+backend/cutr.db*
+backend/.secret
+node_modules/
+dist/
+__pycache__/
+.pytest_cache/

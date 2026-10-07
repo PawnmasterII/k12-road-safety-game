@@ -17,8 +17,11 @@ spec's Key Entities. All writes go through `backend/db.py` helpers.
 | pin_hash | TEXT NOT NULL | sha256(salt + pin) hex |
 | created_at | TEXT NOT NULL | ISO-8601 UTC |
 
-UNIQUE index on (first_name, school, pin_hash) — enforces FR-03's duplicate
-rule (same name + school + same PIN ⇒ "already have an account").
+UNIQUE index on (first_name, school, pin_hash) guards against exact duplicate
+rows. FR-03's "same name + school + PIN ⇒ already an account" rule is enforced
+in the signup route by re-hashing the submitted PIN against the existing
+student's salt — salted hashes for the same PIN differ, so uniqueness must be
+checked in application code, not by the index.
 
 Grade → module mapping (FR-06): K,1,2 → little-explorers · 3,4,5 →
 safety-heroes · 6,7,8 → smart-travelers · 9-12 → road-ready-teens.
