@@ -25,28 +25,42 @@ unity command get_scene_hierarchy --project-path .
   `eval 'UnityEngine.Application.runInBackground = true;'`. Set PlayerSettings.runInBackground BEFORE entering play.
 - Claude Code gateway (electronhub) was down → drove Unity via `unity command eval` C# instead. Works great.
 
-## KNOWN ISSUES (user-reported + diagnosed)
+## KNOWN ISSUES — status after session 2
 
-1. **Character is INVISIBLE / sprites look wrong.** Root cause hypothesis (high confidence):
-   `SceneBuilder2D.NewSprite` uses `Sprite.Create(Texture2D.whiteTexture, ...)` at EDIT time.
-   Those sprites reference a runtime texture that is NOT a project asset, so they break after
-   scene save/reload (pink/missing/white-on-white). FIX: either (a) create real Texture2D assets
-   once (AssetDatabase.CreateAsset) and assign Sprite assets, or (b) build sprites at RUNTIME in
-   Awake from `Texture2D.whiteTexture` (never serialized), or (c) drop in real sprite art
-   (Kenney.nl free top-down packs are perfect for K-12). Prefer (c) for the real game, (b) as stopgap.
-2. **Nothing to interact with yet** — by design; that's Milestone 3 (below).
-3. Player spawned at bottom sidewalk; during CLI tests it was driven to x≈93 (outside the 36m world).
-   Reset its position in the scene or in Build() — it's saved wherever it was last.
+1. ~~Character invisible~~ **FIXED & ROOT-CAUSED (two bugs, both fixed):**
+   a. Sprites were built from `Texture2D.whiteTexture` at runtime (not serialized → lost on reload).
+      Now: real PNG assets in `Assets/Sprites/` via `GetOrCreateSprite()`.
+   b. **The actual invisibility bug:** imported sprites default to `SpriteMeshType.Tight`, but the
+      renderers use `SpriteDrawMode.Sliced` — sliced on tight-mesh = degenerate/invisible geometry.
+      Fix: `TextureImporterSettings.spriteMeshType = FullRect`, enforced on every build.
+   Art is still flat colored squares. Next art pass: Kenney.nl top-down packs (free, K-12 friendly).
+2. ~~Nothing to interact with~~ **FIXED:** 5 walk-in quiz zones (glowing outlines): zebra (5 questions,
+   maps to backend `le-crossing`), school (2), park (2), home (2), shop (2). Walk in → card opens,
+   player pauses, click answers, feedback with source citation, completion closes card.
+   Verified end-to-end in play mode via CLI-driven clicks.
+3. Player spawn resets to (0, -3.7) on every `Build()` call.
+
+## NEW GOTCHAS (session 2)
+
+- **Editor restart fixes a stuck play loop.** If `Time.frameCount` freezes at 1 with clean console,
+  not paused, window visible: the Editor's main thread is wedged (likely stale domain reload).
+  Kill Unity.exe, reopen project. `unity status` then `editor_play` again.
+- `TextureImporter.spriteMeshType` doesn't exist — use `ReadTextureSettings()/SetTextureSettings()`.
+- Importer settings are only applied when `sprite == null` otherwise — always check/enforce settings
+  even for existing assets.
+- After an Editor restart the open scene is EMPTY (no scene restores). Open SafeStreets explicitly:
+  `eval 'UnityEditor.SceneManagement.EditorSceneManager.OpenScene("Assets/Scenes/SafeStreets.unity");'`
+- Quiz answer flow has a 2.2s feedback pause; drive clicks ≥2.5s apart when testing via CLI.
 
 ## NEXT MILESTONES (in order)
 
-1. Fix visibility (sprites above) + reset player spawn to (0, -3.7).
-2. **Interactables**: TriggerZone2D (BoxCollider2D isTrigger) at zebra + buildings; walking into one
-   pauses movement and pops a question card (UI Toolkit or Canvas + TextMeshPro); answer feedback.
-3. **Content**: pull questions from the CUTR Resource Guide (same bank as backend `content.py` — reuse!).
+1. ~~Fix visibility (sprites above) + reset player spawn~~ **DONE.**
+2. ~~Interactables~~ **DONE (all 5 zones).**
+3. **Content**: extend question banks for older modules (bike/e-scooter FL rules, GDL) — reuse web `content.py`.
 4. **Backend hookup**: UnityWebRequest POST to FastAPI `/api/activities/{id}/submit` with the kid's
    token → score + badges appear on the web dashboard. Decide auth hand-off (web login → deep link
-   with token, or in-game name+school+PIN screen).
+   with token, or in-game name+school+PIN screen). QuizUI already attempts the POST; needs a real token
+   (set via `PlayerPrefs.SetString("cutr_token", ...)`) and the backend running.
 5. WebGL build (module already installed) and embed/link from the web app.
 
 ## Housekeeping
