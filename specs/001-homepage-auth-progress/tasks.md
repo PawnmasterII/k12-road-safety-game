@@ -26,15 +26,15 @@ description: "Task list for 001-homepage-auth-progress"
 
 ## Phase 2: US1 + US2 — Join and return (P1)
 
-- [x] T006 US2 `backend/routers/auth_routes.py`: POST /api/auth/signup (validation per contract, 409 duplicate rule), pytest checks
-- [x] T007 US1 `backend/routers/auth_routes.py`: POST /api/auth/login (401 friendly fail), GET /api/auth/me, POST /api/auth/logout, pytest checks
+- [x] T006 US2 `backend/routers/auth_routes.py`: POST /api/auth/signup (validation per contract, 409 duplicate rule) — verified via API contract script (409 friendly message)
+- [x] T007 US1 `backend/routers/auth_routes.py`: POST /api/auth/login (401 friendly fail), GET /api/auth/me, POST /api/auth/logout — verified via API contract script
 - [x] T008 US1/US2 `frontend`: Signup.jsx + Login.jsx + api.js wrapper + router; friendly inline errors (FR-02, FR-03)
 - [x] T009 US1/US2 `frontend`: Dashboard.jsx minimal — greeting by name, logout button; token persisted in localStorage
 - [x] T010 US1 Playwright check: register → logout → restart backend → login → same student; wrong-PIN shows friendly error (SC-002 partial)
 
 ## Phase 3: US3 — Activity loop: score + badges (P2)
 
-- [x] T011 US3 `backend/routers/progress_routes.py`: GET /api/progress; POST /api/activities/{id}/submit with server-side grading, best-score-wins, badge rules per data-model.md; pytest checks (incl. total never double-counts)
+- [x] T011 US3 `backend/routers/progress_routes.py`: GET /api/progress; POST /api/activities/{id}/submit with server-side grading, best-score-wins, badge rules — verified via API contract script (retake 5/5 after 4/5 totals 5, not 9)
 - [x] T012 US3 `frontend` ActivityPage.jsx: question flow, immediate per-question feedback, submit → results screen
 - [x] T013 US3 `frontend` Dashboard.jsx full: total score, badge shelf with "New!" markers, per-module best scores/completion
 - [x] T014 US3 Playwright check: finish activity 4/5 → homepage total +4, badge shown; retake 5/5 → best updated, badge "perfect" appears (US3-1..3)
