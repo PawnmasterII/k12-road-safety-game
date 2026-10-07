@@ -64,9 +64,15 @@ namespace SafeStreets
 
         public void StartDialog(Conversation conversation, GameObject source)
         {
+            StartDialog(conversation, source, null);
+        }
+
+        public void StartDialog(Conversation conversation, GameObject source, System.Action onDone)
+        {
             if (conversation == null || conversation.lines == null || conversation.lines.Length == 0) return;
             _conversation = conversation;
             Source = source;
+            _onDone = onDone;
             _line = 0;
             IsOpen = true;
 
@@ -85,7 +91,11 @@ namespace SafeStreets
             _panel.SetActive(false);
             var player = GameObject.FindWithTag("Player");
             if (player != null) player.GetComponent<PlayerController2D>().Paused = false;
+            var cb = _onDone; _onDone = null;
+            cb?.Invoke();
         }
+
+        private System.Action _onDone;
 
         private void ShowCurrent()
         {
