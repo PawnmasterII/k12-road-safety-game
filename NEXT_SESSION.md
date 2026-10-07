@@ -27,13 +27,13 @@ unity command get_scene_hierarchy --project-path .
 
 ## KNOWN ISSUES — status after session 2
 
-1. ~~Character invisible~~ **FIXED & ROOT-CAUSED (two bugs, both fixed):**
-   a. Sprites were built from `Texture2D.whiteTexture` at runtime (not serialized → lost on reload).
-      Now: real PNG assets in `Assets/Sprites/` via `GetOrCreateSprite()`.
-   b. **The actual invisibility bug:** imported sprites default to `SpriteMeshType.Tight`, but the
-      renderers use `SpriteDrawMode.Sliced` — sliced on tight-mesh = degenerate/invisible geometry.
-      Fix: `TextureImporterSettings.spriteMeshType = FullRect`, enforced on every build.
-   Art is still flat colored squares. Next art pass: Kenney.nl top-down packs (free, K-12 friendly).
+1. ~~Character invisible~~ **FIXED (session 3, PROVEN WITH PIXELS).** TWO stacked bugs:
+   a. Session-2 fixes (real PNG sprite assets + FullRect mesh) were necessary but NOT sufficient.
+   b. **The final bug was CameraFollow2D:** `want.z = offset.z` clamped the camera's z to the
+      player's z — an ortho camera can't render objects lying on its own plane. Player always at
+      camera distance 0.0. Fix: remove the clamp, let offset's z (-10) do the pull-back.
+   Verification standard from now on: capture_game_view → PNG → pixel-color analysis
+   (460 orange px found at screen center = kid visible). Transform probes are NOT proof of rendering.
 2. ~~Nothing to interact with~~ **FIXED:** 5 walk-in quiz zones (glowing outlines): zebra (5 questions,
    maps to backend `le-crossing`), school (2), park (2), home (2), shop (2). Walk in → card opens,
    player pauses, click answers, feedback with source citation, completion closes card.
