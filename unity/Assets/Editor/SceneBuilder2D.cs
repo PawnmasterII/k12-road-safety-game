@@ -30,7 +30,7 @@ namespace SafeStreets.EditorTools
 
         public static string Build()
         {
-            EnsureFolders();
+            EnsureFolder("Assets/Scenes");
             var spriteDir = "Assets/Sprites";
             if (!AssetDatabase.IsValidFolder(spriteDir))
                 AssetDatabase.CreateFolder("Assets", "Sprites");
@@ -42,30 +42,77 @@ namespace SafeStreets.EditorTools
             var imGo = new GameObject("InteractionManager");
             imGo.AddComponent<SafeStreets.InteractionManager>();
 
-            // ---- Grass base ----
-            var grass = NewSprite(root.transform, "Grass", "grass", Palette["Grass"], new Vector3(0, 0, 50), new Vector2(36, 30));
-            grass.GetComponent<SpriteRenderer>().sortingOrder = -10;
+            // ---- World tiles from the pack's Field tileset (16x16, world tile = 1 unit) ----
+            // TilesetField.png 80x240 = 5 cols x 15 rows. Known-good cells (col,row) —
+            // grass patches, dirt path, flowers; verified by cropping before wiring.
+            var grass = GetOrCreateTile("tileset_field.png", "t_grass", 2, 10);
+            var grass2 = GetOrCreateTile("tileset_field.png", "t_grass2", 3, 10);
+            var flower = GetOrCreateTile("tileset_field.png", "t_flower", 1, 13);
+            var dirt = GetOrCreateTile("tileset_field.png", "t_dirt", 0, 10);
 
-            // ---- Road ----
-            NewSprite(root.transform, "Road", "road", Palette["Road"], new Vector3(0, 0, 0), new Vector2(36, 6));
-
-            // ---- Center dashes (skip the crossing zone) ----
-            for (float x = -16f; x <= 16f; x += 2.4f)
+            // Ground: 40 x 28 tiles of grass (1 unit per tile), deterministic variation
+            int gw = 40, gh = 28;
+            var groundRoot = new GameObject("GroundTiles");
+            groundRoot.transform.SetParent(root.transform);
+            for (int ty = -gh / 2; ty < gh / 2; ty++)
             {
-                if (x > -5f && x < 5f) continue;
-                NewSprite(root.transform, $"Dash_{x:0}", "stripe", Palette["Stripe"], new Vector3(x, 0, -1), new Vector2(1.4f, 0.18f));
+                for (int tx = -gw / 2; tx < gw / 2; tx++)
+                {
+                    // pseudo-random but deterministic variation
+                    int h = (tx * 73856093) ^ (ty * 19349663);
+                    Sprite s = ((h & 15) == 0) ? flower : (((h >> 4) & 7) == 0 ? grass2 : grass);
+                    var t = new GameObject($"g{tx}_{ty}");
+                    t.transform.SetParent(groundRoot.transform);
+                    t.transform.position = new Vector3(tx + 0.5f, ty + 0.5f, 50f);
+                    var sr = t.AddComponent<SpriteRenderer>();
+                    sr.sprite = s;
+                    sr.sortingOrder = -10;
+                }
             }
 
-            // ---- Sidewalks ----
-            NewSprite(root.transform, "Sidewalk_N", "stripe", Palette["Sidewalk"], new Vector3(0, 3.7f, 1), new Vector2(36, 1.4f));
-            NewSprite(root.transform, "Sidewalk_S", "stripe", Palette["Sidewalk"], new Vector3(0, -3.7f, 1), new Vector2(36, 1.4f));
+            // ---- Road: dirt path strip, 6 tiles tall, through the middle ----
+            var roadRoot = new GameObject("RoadTiles");
+            roadRoot.transform.SetParent(root.transform);
+            for (int ty = -3; ty < 3; ty++)
+            {
+                for (int tx = -gw / 2; tx < gw / 2; tx++)
+                {
+                    var t = new GameObject($"r{tx}_{ty}");
+                    t.transform.SetParent(roadRoot.transform);
+                    t.transform.position = new Vector3(tx + 0.5f, ty + 0.5f, -5f);
+                    var sr = t.AddComponent<SpriteRenderer>();
+                    sr.sprite = dirt;
+                    sr.sortingOrder = -8;
+                }
+            }
 
-            // ---- Zebra crossing ----
+            // ---- Zebra crossing: white paint stripes ON the road (thin boxes over dirt) ----
+            var stripe = GetOrCreateTile("tileset_field.png", "t_stripe", 2, 10); // reuse grass white? no — use plain white
             for (int i = 0; i < 7; i++)
             {
-                var z = NewSprite(root.transform, $"Zebra_{i}", "zebra", Palette["Zebra"],
-                    new Vector3(-3.6f + i * 1.2f, 0f, -2), new Vector2(0.7f, 5.6f));
-                z.GetComponent<SpriteRenderer>().sortingOrder = -4;
+                var z = new GameObject($"Zebra_{i}");
+                z.transform.SetParent(root.transform);
+                z.transform.position = new Vector3(-3.6f + i * 1.2f, 0f, -2f);
+                var sr = z.AddComponent<SpriteRenderer>();
+                sr.sprite = UnityEngine.Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 1f);
+                sr.color = new Color(0.95f, 0.95f, 0.92f);
+                sr.drawMode = SpriteDrawMode.Sliced;
+                sr.size = new Vector2(0.7f, 5.6f);
+                sr.sortingOrder = -4;
+            }
+
+            // ---- Sidewalks: lighter dirt border rows ----
+            for (int tx = -gw / 2; tx < gw / 2; tx++)
+            {
+                foreach (var yy in new[] { 3.7f, -3.7f })
+                {
+                    var t = new GameObject($"sw{tx}_{yy:0.0}");
+                    t.transform.SetParent(root.transform);
+                    t.transform.position = new Vector3(tx + 0.5f, yy, -3f);
+                    var sr = t.AddComponent<SpriteRenderer>();
+                    sr.sprite = grass2;
+                    sr.sortingOrder = -6;
+                }
             }
 
             // ---- Labeled buildings (all interactable) ----
@@ -74,10 +121,9 @@ namespace SafeStreets.EditorTools
             MakeBuilding(root.transform, "PARK", new Vector3(12, 8.5f), new Vector2(9, 5), "park", Palette["Park"], "the park");
             MakeBuilding(root.transform, "SHOP", new Vector3(-11, -8.5f), new Vector2(8, 5), "shop", Palette["Shop"], "the corner shop");
 
-            // ---- Kid player at the bottom sidewalk (spawn reset every build) ----
-            const string SheetPath = "Assets/Sprites/Ninja/player_sheet.png";
-            if (!AssetDatabase.IsValidFolder("Assets/Sprites/Ninja"))
-                AssetDatabase.CreateFolder("Assets/Sprites", "Ninja");
+            // ---- Kid player: Ninja Adventure "Boy" walk sheet (4x4: down/left/right/up) ----
+            const string SheetPath = "Assets/Sprites/Ninja/boy_walk.png";
+            const string ShadowPath = "Assets/Sprites/Ninja/boy_shadow.png";
 
             var player = new GameObject("Player");
             player.transform.SetParent(root.transform);
@@ -101,6 +147,7 @@ namespace SafeStreets.EditorTools
             var controller = player.AddComponent<SafeStreets.PlayerController2D>();
 
             var animator = player.AddComponent<SafeStreets.PlayerAnimator>();
+            // SeparateAnim/Walk layout: row0=down, row1=left, row2=right, row3=up
             animator.walkDown = LoadRow(SheetPath, "down");
             animator.walkUp = LoadRow(SheetPath, "up");
             animator.walkLeft = LoadRow(SheetPath, "left");
@@ -109,9 +156,9 @@ namespace SafeStreets.EditorTools
             // drop shadow (the pack's own shadow sprite) — sells the 2.5D look
             var shadow = new GameObject("Shadow");
             shadow.transform.SetParent(player.transform);
-            shadow.transform.localPosition = new Vector3(0f, -0.35f, 1f);
+            shadow.transform.localPosition = new Vector3(0f, -0.28f, 1f);
             var ssr = shadow.AddComponent<SpriteRenderer>();
-            var shadowTex = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Sprites/Ninja/shadow.png");
+            var shadowTex = AssetDatabase.LoadAssetAtPath<Sprite>(ShadowPath);
             if (shadowTex != null) ssr.sprite = shadowTex;
             ssr.sortingOrder = 9;
             ssr.color = new Color(0f, 0f, 0f, 0.4f);
@@ -262,10 +309,68 @@ namespace SafeStreets.EditorTools
 
             // ---- (quiz zone builder removed — interaction system replaced it) ----
 
-        private static void EnsureFolders()
+        /// <summary>
+        /// Persisted world tile: crop a 16x16 region from a tileset sheet into its own
+        /// sprite asset (Assets/Sprites/Tiles/&lt;name&gt;.png). Cached per name.
+        /// </summary>
+        private static Sprite GetOrCreateTile(string tilesetFile, string name, int col, int row)
         {
-            if (!AssetDatabase.IsValidFolder("Assets/Scenes"))
-                AssetDatabase.CreateFolder("Assets", "Scenes");
+            string path = $"Assets/Sprites/Tiles/{name}.png";
+            var existing = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+            if (existing != null) return existing;
+
+            var sheetPath = $"Assets/Sprites/Ninja/{tilesetFile}";
+            var sheet = AssetDatabase.LoadAssetAtPath<Sprite>(sheetPath);
+            var sheetImp = (TextureImporter)AssetImporter.GetAtPath(sheetPath);
+            if (sheet == null || sheetImp == null || !sheetImp.isReadable)
+            {
+                // import (or re-import) tileset as readable single sprite
+                if (sheetImp != null)
+                {
+                    sheetImp.textureType = TextureImporterType.Sprite;
+                    sheetImp.spriteImportMode = SpriteImportMode.Single;
+                    sheetImp.filterMode = FilterMode.Point;
+                    sheetImp.mipmapEnabled = false;
+                    sheetImp.textureCompression = TextureImporterCompression.Uncompressed;
+                    sheetImp.isReadable = true;   // needed for GetPixels when cropping tiles
+                    sheetImp.SaveAndReimport();
+                    sheet = AssetDatabase.LoadAssetAtPath<Sprite>(sheetPath);
+                }
+            }
+            if (sheet == null) return null;
+
+            var tex = sheet.texture;
+            var tile = new Texture2D(16, 16, TextureFormat.RGBA32, false);
+            tile.filterMode = FilterMode.Point;
+            var srcY = tex.height - (row + 1) * 16;   // texture coords are bottom-up
+            tile.SetPixels(tex.GetPixels(col * 16, srcY, 16, 16));
+            tile.Apply();
+
+            EnsureFolder("Assets/Sprites/Tiles");
+            System.IO.File.WriteAllBytes(path, tile.EncodeToPNG());
+            AssetDatabase.ImportAsset(path);
+            var imp2 = (TextureImporter)AssetImporter.GetAtPath(path);
+            imp2.textureType = TextureImporterType.Sprite;
+            imp2.spriteImportMode = SpriteImportMode.Single;
+            imp2.filterMode = FilterMode.Point;
+            imp2.mipmapEnabled = false;
+            imp2.textureCompression = TextureImporterCompression.Uncompressed;
+            var st = new TextureImporterSettings();
+            imp2.ReadTextureSettings(st);
+            st.spriteMeshType = SpriteMeshType.FullRect;
+            imp2.SetTextureSettings(st);
+            imp2.SaveAndReimport();
+            return AssetDatabase.LoadAssetAtPath<Sprite>(path);
+        }
+
+        private static void EnsureFolder(string path)
+        {
+            if (!AssetDatabase.IsValidFolder(path))
+            {
+                var parent = path.Substring(0, path.LastIndexOf('/'));
+                var leaf = path.Substring(path.LastIndexOf('/') + 1);
+                AssetDatabase.CreateFolder(parent, leaf);
+            }
         }
     }
 }
