@@ -38,9 +38,9 @@ namespace SafeStreets.EditorTools
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             var root = new GameObject("SafeStreets");
 
-            // ---- System objects first (QuizUI builds its canvas in Awake) ----
-            var quizGo = new GameObject("QuizUI");
-            quizGo.AddComponent<SafeStreets.QuizUI>();
+            // ---- Interaction system ----
+            var imGo = new GameObject("InteractionManager");
+            imGo.AddComponent<SafeStreets.InteractionManager>();
 
             // ---- Grass base ----
             var grass = NewSprite(root.transform, "Grass", "grass", Palette["Grass"], new Vector3(0, 0, 50), new Vector2(36, 30));
@@ -68,11 +68,11 @@ namespace SafeStreets.EditorTools
                 z.GetComponent<SpriteRenderer>().sortingOrder = -4;
             }
 
-            // ---- Labeled buildings ----
-            MakeBuilding(root.transform, "SCHOOL", new Vector3(-11, 8.5f), new Vector2(9, 5), "school", Palette["School"]);
-            MakeBuilding(root.transform, "HOME", new Vector3(11, -8.5f), new Vector2(8, 5), "home", Palette["Home"]);
-            MakeBuilding(root.transform, "PARK", new Vector3(12, 8.5f), new Vector2(9, 5), "park", Palette["Park"]);
-            MakeBuilding(root.transform, "SHOP", new Vector3(-11, -8.5f), new Vector2(8, 5), "shop", Palette["Shop"]);
+            // ---- Labeled buildings (all interactable) ----
+            MakeBuilding(root.transform, "SCHOOL", new Vector3(-11, 8.5f), new Vector2(9, 5), "school", Palette["School"], "your school");
+            MakeBuilding(root.transform, "HOME", new Vector3(11, -8.5f), new Vector2(8, 5), "home", Palette["Home"], "your home");
+            MakeBuilding(root.transform, "PARK", new Vector3(12, 8.5f), new Vector2(9, 5), "park", Palette["Park"], "the park");
+            MakeBuilding(root.transform, "SHOP", new Vector3(-11, -8.5f), new Vector2(8, 5), "shop", Palette["Shop"], "the corner shop");
 
             // ---- Kid player at the bottom sidewalk (spawn reset every build) ----
             var player = NewSprite(root.transform, "Player", "kid", Palette["Kid"], new Vector3(0, -3.7f, -10), new Vector2(1.0f, 1.0f));
@@ -93,17 +93,12 @@ namespace SafeStreets.EditorTools
             camGo.AddComponent<SafeStreets.CameraFollow2D>().target = player.transform;
             camGo.transform.position = new Vector3(player.transform.position.x, player.transform.position.y, -10f);
 
-            // ---- Quiz zones (walk-in triggers) ----
-            MakeQuizZone(root.transform, "QuizZone_Zebra", "zebra", new Vector3(0, 0.5f), new Vector2(7.5f, 4.5f));
-            MakeQuizZone(root.transform, "QuizZone_School", "school", new Vector3(-11, 5.6f), new Vector2(9.5f, 3f));
-            MakeQuizZone(root.transform, "QuizZone_Park", "park", new Vector3(12, 5.6f), new Vector2(9.5f, 3f));
-            MakeQuizZone(root.transform, "QuizZone_Home", "home", new Vector3(11, -5.6f), new Vector2(8.5f, 3f));
-            MakeQuizZone(root.transform, "QuizZone_Shop", "shop", new Vector3(-11, -5.6f), new Vector2(8.5f, 3f));
+            // ---- Quiz zones REMOVED (replaced by Interactable + InteractionManager) ----
 
             // ---- Title ----
             var titleGo = new GameObject("ZoneTitle");
             var tmp = titleGo.AddComponent<TextMesh>();
-            tmp.text = "SAFE STREET - walk into the glowing zones!";
+            tmp.text = "SAFE STREET - walk up to a building and press SPACE!";
             tmp.characterSize = 0.28f;
             tmp.fontSize = 40;
             tmp.anchor = TextAnchor.MiddleCenter;
@@ -174,11 +169,12 @@ namespace SafeStreets.EditorTools
             return GetOrCreateSprite(key, Color.white);
         }
 
-        private static GameObject MakeBuilding(Transform parent, string label, Vector2 pos, Vector2 size, string spriteKey, Color color)
+        private static GameObject MakeBuilding(Transform parent, string label, Vector2 pos, Vector2 size, string spriteKey, Color color, string interactLabel)
         {
             var go = NewSprite(parent, "Building_" + label, spriteKey, color, new Vector3(pos.x, pos.y, 1), size);
             var box = go.AddComponent<BoxCollider2D>();
             box.size = size;
+            go.AddComponent<SafeStreets.Interactable>().label = interactLabel;
 
             var labelGo = new GameObject("Label");
             labelGo.transform.SetParent(go.transform);
@@ -192,30 +188,7 @@ namespace SafeStreets.EditorTools
             return go;
         }
 
-        private static void MakeQuizZone(Transform parent, string name, string zoneId, Vector2 pos, Vector2 size)
-        {
-            var go = new GameObject(name);
-            go.transform.SetParent(parent);
-            go.transform.position = new Vector3(pos.x, pos.y, -5);
-
-            // faint glowing outline so kids can see the zone
-            var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = GetOrCreateSpriteForZone("zone-glow");
-            sr.color = new Color(1f, 0.9f, 0.4f, 0.25f);
-            sr.drawMode = SpriteDrawMode.Sliced;
-            sr.size = size;
-            sr.sortingOrder = -3;
-
-            var box = go.AddComponent<BoxCollider2D>();
-            box.isTrigger = true;
-            box.size = size;
-
-            var zone = go.AddComponent<SafeStreets.QuizZone>();
-            zone.zoneId = zoneId;
-            var def = SafeStreets.QuestionBank.ByZoneId(zoneId);
-            zone.title = def != null ? def.title : zoneId;
-            zone.activityId = def != null ? def.activityId : "";
-        }
+            // ---- (quiz zone builder removed — interaction system replaced it) ----
 
         private static void EnsureFolders()
         {
