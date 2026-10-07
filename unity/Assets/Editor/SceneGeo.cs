@@ -95,6 +95,7 @@ namespace SafeStreets.EditorTools
             rb.gravityScale = 0f;
             rb.freezeRotation = true;
             player.AddComponent<SafeStreets.PlayerController2D>();
+            SetWorldSize(psr, new Vector2(0.8f, 0.8f));   // player body: 0.8 world units (visual)
 
             // ---- Camera ----
             var camGo = new GameObject("MainCamera");
@@ -115,10 +116,33 @@ namespace SafeStreets.EditorTools
             hudGo.transform.SetParent(root.transform);
             hudGo.transform.position = new Vector3(0f, 0f, 0f);
             hudGo.AddComponent<SafeStreets.HudAnchor>();
-            SafeStreets.QuestManager.Instance.RegisterHud(hud, quest);
+            UnityEngine.Object.FindFirstObjectByType<SafeStreets.QuestManager>().RegisterHud(hud, quest);
 
             EditorSceneManager.SaveScene(scene, "Assets/Scenes/SafeStreets.unity");
             return $"geo scene built, roots={scene.rootCount}";
+        }
+
+        // ---- THE uniform unit system: 10 texture pixels = 1 world unit, everywhere. ----
+        // Every generated sprite is authored at this density, so natural size == world size.
+        // Hitboxes are specified in world units and therefore always match visuals.
+        // To swap in real art later: author it at 10 px per world unit (or scale the
+        // GameObject by desiredWorldUnits / spriteNaturalUnits) — colliders don't move.
+        public const float PX_PER_UNIT = 10f;
+
+        /// <summary>
+        /// THE uniform unit guarantee: whatever sprite is assigned, scale the transform so
+        /// the rendered size is exactly `worldSize` world units. Independent of texture
+        /// pixel dimensions AND import PPU. Hitboxes are declared in world units and never
+        /// touched, so visual size == logical size by construction. Swap any texture in —
+        /// the size on screen does not change.
+        /// </summary>
+        public static void SetWorldSize(SpriteRenderer sr, Vector2 worldSize)
+        {
+            var b = sr.sprite.bounds.size;
+            sr.transform.localScale = new Vector3(
+                b.x > 0.0001f ? worldSize.x / b.x : 1f,
+                b.y > 0.0001f ? worldSize.y / b.y : 1f,
+                1f);
         }
 
         private static GameObject Shape(GameObject parent, string name, Color color, Vector3 pos, Vector2 size)
@@ -127,19 +151,15 @@ namespace SafeStreets.EditorTools
             go.transform.SetParent(parent.transform);
             go.transform.position = pos;
             var sr = go.AddComponent<SpriteRenderer>();
-            // EXACT-SIZE sprite: whiteTexture is 4x4; scale PPU so natural size == collider size.
-            // ppu = 4 px / max(size) ... simpler: per-axis impossible with one PPU, so use a
-            // dedicated Texture2D of the exact pixel size (FullRect, simple mode).
-            int pxW = Mathf.Max(1, Mathf.RoundToInt(size.x * 10f));
-            int pxH = Mathf.Max(1, Mathf.RoundToInt(size.y * 10f));
+            int pxW = Mathf.Max(1, Mathf.RoundToInt(size.x * PX_PER_UNIT));
+            int pxH = Mathf.Max(1, Mathf.RoundToInt(size.y * PX_PER_UNIT));
             var tex = new Texture2D(pxW, pxH, TextureFormat.RGBA32, false);
             var fill = new Color[pxW * pxH];
             for (int i = 0; i < fill.Length; i++) fill[i] = Color.white;
             tex.SetPixels(fill);
             tex.Apply();
-            var sprite = Sprite.Create(tex, new Rect(0, 0, pxW, pxH),
-                new Vector2(0.5f, 0.5f), 10f, 0, SpriteMeshType.FullRect);
-            sr.sprite = sprite;
+            sr.sprite = Sprite.Create(tex, new Rect(0, 0, pxW, pxH),
+                new Vector2(0.5f, 0.5f), PX_PER_UNIT, 0, SpriteMeshType.FullRect);
             sr.color = color;
             return go;
         }
@@ -167,7 +187,7 @@ namespace SafeStreets.EditorTools
             imp.textureType = TextureImporterType.Sprite;
             imp.spriteImportMode = SpriteImportMode.Single;
             imp.filterMode = FilterMode.Point;
-            imp.spritePixelsPerUnit = 80f;   // 64px sprite => 0.8 world units diameter
+            imp.spritePixelsPerUnit = PX_PER_UNIT;   // 64px circle => 0.8 world units (uniform system)
             var st = new TextureImporterSettings();
             imp.ReadTextureSettings(st);
             st.spriteMeshType = SpriteMeshType.FullRect;
@@ -201,14 +221,15 @@ namespace SafeStreets.EditorTools
             go.transform.position = pos;
 
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = SafeStreets.EditorTools.SceneGeo.SquareSprite();   // 0.8 world units
+            sr.sprite = SafeStreets.EditorTools.SceneGeo.SquareSprite();
             sr.color = color;
             sr.sortingLayerName = "Player";
             sr.sortingOrder = 5;
+            SetWorldSize(sr, new Vector2(1.2f, 1.2f));   // NPC body: 1.2 world units (visual)
 
             var col = go.AddComponent<BoxCollider2D>();
             col.isTrigger = true;
-            col.size = new Vector2(3.2f, 2.6f);   // talk zone
+            col.size = new Vector2(3.2f, 2.6f);   // talk zone (world units)
 
             if (wantsCrossing)
             {
@@ -259,13 +280,23 @@ namespace SafeStreets.EditorTools
             imp.textureType = TextureImporterType.Sprite;
             imp.spriteImportMode = SpriteImportMode.Single;
             imp.filterMode = FilterMode.Point;
-            imp.spritePixelsPerUnit = 5f;    // 4px sprite => 0.8 world units square
+            imp.spritePixelsPerUnit = PX_PER_UNIT;   // 8px square => 0.8 world units (uniform system)
             var st = new TextureImporterSettings();
             imp.ReadTextureSettings(st);
             st.spriteMeshType = SpriteMeshType.FullRect;
             imp.SetTextureSettings(st);
             imp.SaveAndReimport();
             _square = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+            if (_square == null)
+            {
+                UnityEngine.Debug.LogError("SquareSprite: import failed at " + path);
+            }
+            else
+            {
+                var natural = _square.bounds.size;   // must be 0.8 x 0.8 world units
+                if (Mathf.Abs(natural.x - 0.8f) > 0.01f)
+                    UnityEngine.Debug.LogError($"SquareSprite: natural size {natural} != 0.8 — PPU wrong!");
+            }
             return _square;
         }
     }
