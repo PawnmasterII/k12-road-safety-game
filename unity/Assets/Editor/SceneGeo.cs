@@ -35,7 +35,7 @@ namespace SafeStreets.EditorTools
             new GameObject("QuestManager").AddComponent<SafeStreets.QuestManager>();
 
             // ---- Ground plane (one big quad, not tiles) ----
-            var ground = Shape(root, "Ground", RoadCol, new Vector3(0, 0, 50), new Vector2(40, 26));
+            var ground = Shape(root, "Ground", GrassBg, new Vector3(0, 0, 50), new Vector2(40, 26));
             ground.GetComponent<SpriteRenderer>().sortingOrder = -10;
 
             // ---- Road strip ----
@@ -113,7 +113,8 @@ namespace SafeStreets.EditorTools
             SafeStreets.DialogStyle.Style(hud, 0.14f, 32, TextAnchor.UpperLeft, Color.white, 60);
             hud.text = "Helped: 0 / 3";
             hudGo.transform.SetParent(root.transform);
-            hudGo.transform.position = new Vector3(0f, 0f, 0f);   // positioned to camera each frame
+            hudGo.transform.position = new Vector3(0f, 0f, 0f);
+            hudGo.AddComponent<SafeStreets.HudAnchor>();
             SafeStreets.QuestManager.Instance.RegisterHud(hud, quest);
 
             EditorSceneManager.SaveScene(scene, "Assets/Scenes/SafeStreets.unity");
@@ -126,10 +127,20 @@ namespace SafeStreets.EditorTools
             go.transform.SetParent(parent.transform);
             go.transform.position = pos;
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 16f);
+            // EXACT-SIZE sprite: whiteTexture is 4x4; scale PPU so natural size == collider size.
+            // ppu = 4 px / max(size) ... simpler: per-axis impossible with one PPU, so use a
+            // dedicated Texture2D of the exact pixel size (FullRect, simple mode).
+            int pxW = Mathf.Max(1, Mathf.RoundToInt(size.x * 10f));
+            int pxH = Mathf.Max(1, Mathf.RoundToInt(size.y * 10f));
+            var tex = new Texture2D(pxW, pxH, TextureFormat.RGBA32, false);
+            var fill = new Color[pxW * pxH];
+            for (int i = 0; i < fill.Length; i++) fill[i] = Color.white;
+            tex.SetPixels(fill);
+            tex.Apply();
+            var sprite = Sprite.Create(tex, new Rect(0, 0, pxW, pxH),
+                new Vector2(0.5f, 0.5f), 10f, 0, SpriteMeshType.FullRect);
+            sr.sprite = sprite;
             sr.color = color;
-            sr.drawMode = SpriteDrawMode.Sliced;
-            sr.size = size;
             return go;
         }
 
@@ -156,6 +167,7 @@ namespace SafeStreets.EditorTools
             imp.textureType = TextureImporterType.Sprite;
             imp.spriteImportMode = SpriteImportMode.Single;
             imp.filterMode = FilterMode.Point;
+            imp.spritePixelsPerUnit = 80f;   // 64px sprite => 0.8 world units diameter
             var st = new TextureImporterSettings();
             imp.ReadTextureSettings(st);
             st.spriteMeshType = SpriteMeshType.FullRect;
@@ -189,11 +201,10 @@ namespace SafeStreets.EditorTools
             go.transform.position = pos;
 
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = SafeStreets.EditorTools.SceneGeo.SquareSprite();   // 1x1 white square
+            sr.sprite = SafeStreets.EditorTools.SceneGeo.SquareSprite();   // 0.8 world units
             sr.color = color;
             sr.sortingLayerName = "Player";
             sr.sortingOrder = 5;
-            go.transform.localScale = new Vector3(0.8f, 0.8f, 1f);
 
             var col = go.AddComponent<BoxCollider2D>();
             col.isTrigger = true;
@@ -248,6 +259,7 @@ namespace SafeStreets.EditorTools
             imp.textureType = TextureImporterType.Sprite;
             imp.spriteImportMode = SpriteImportMode.Single;
             imp.filterMode = FilterMode.Point;
+            imp.spritePixelsPerUnit = 5f;    // 4px sprite => 0.8 world units square
             var st = new TextureImporterSettings();
             imp.ReadTextureSettings(st);
             st.spriteMeshType = SpriteMeshType.FullRect;
