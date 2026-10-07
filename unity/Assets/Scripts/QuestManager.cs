@@ -35,6 +35,7 @@ namespace SafeStreets
 
         public void RegisterHud(TextMesh hud, QuestData data)
         {
+            if (Instance == null) Instance = this;   // edit-mode builds: Awake() hasn't run
             _hud = hud;
             if (data != null) required = data.requiredCrossings;
             Refresh();
