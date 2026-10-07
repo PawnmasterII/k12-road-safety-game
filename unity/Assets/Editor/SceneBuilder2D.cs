@@ -178,9 +178,40 @@ namespace SafeStreets.EditorTools
             MakeBuilding(root.transform, "PARK", new Vector2(12, 8.5f), new Vector2(9, 5), "the park");
             MakeBuilding(root.transform, "SHOP", new Vector2(-11, -8.5f), new Vector2(8, 5), "the corner shop");
 
-            // ---- InteractionManager ----
+            // ---- Interaction + Dialog systems ----
             var imGo = new GameObject("InteractionManager");
             imGo.AddComponent<SafeStreets.InteractionManager>();
+            var dmGo = new GameObject("DialogManager");
+            dmGo.AddComponent<SafeStreets.DialogManager>();
+
+            // ---- Conversations (ScriptableObject assets, 2DRPGKit pattern) ----
+            var officer = ScriptableObject.CreateInstance<SafeStreets.Conversation>();
+            officer.speakerName = "Officer Ada";
+            officer.lines = new[]
+            {
+                "Hi! I'm Officer Ada. I keep this street safe.",
+                "Remember: before you cross, STOP at the curb and look both ways.",
+                "//Officer Ada",
+                "Cross only at the zebra stripes — and never chase a ball into the road!",
+            };
+            officer.closingTip = "Stop. Look. Listen. Then cross with a grown-up.";
+            AssetDatabase.CreateAsset(officer, "Assets/Conversation_OfficerAda.asset");
+
+            var granny = ScriptableObject.CreateInstance<SafeStreets.Conversation>();
+            granny.speakerName = "Granny Rose";
+            granny.lines = new[]
+            {
+                "My eyes aren't what they used to be, dear.",
+                "At night, wear something BRIGHT so drivers can see you!",
+                "//Granny Rose",
+                "Helmets too — a helmet on your head is worth two in your backpack.",
+            };
+            granny.closingTip = "Be seen: bright clothes by day, reflectors at night.";
+            AssetDatabase.CreateAsset(granny, "Assets/Conversation_GrannyRose.asset");
+
+            // ---- NPCs (borrowed 2DRPGKit pattern: trigger zone + SPACE dialog) ----
+            MakeNPC(root.transform, "OfficerAda", "villager", new Vector3(2.5f, 3.2f, 0f), officer);
+            MakeNPC(root.transform, "GrannyRose", "oldwoman", new Vector3(-9f, -3.2f, 0f), granny);
 
             // ---- Camera (tutorial #4 style follow) ----
             var camGo = new GameObject("MainCamera");
@@ -207,6 +238,40 @@ namespace SafeStreets.EditorTools
 
             EditorSceneManager.SaveScene(scene, "Assets/Scenes/SafeStreets.unity");
             return $"scene=SafeStreets roots={scene.rootCount} tilesGround={(ground.size.x * ground.size.y)}";
+        }
+
+        private static void MakeNPC(Transform parent, string name, string sheetKey, Vector3 pos,
+            SafeStreets.Conversation conversation)
+        {
+            var go = new GameObject("NPC_" + name);
+            go.transform.SetParent(parent);
+            go.transform.position = pos;
+
+            var sr = go.AddComponent<SpriteRenderer>();
+            var sheetPath = $"Assets/Sprites/Ninja/{sheetKey}_sheet.png";
+            var assets = AssetDatabase.LoadAllAssetsAtPath(sheetPath);
+            foreach (var a in assets)
+                if (a is UnityEngine.Sprite s && s.name.EndsWith("_0"))
+                {
+                    sr.sprite = s;   // first frame: facing down idle
+                    break;
+                }
+            sr.sortingLayerName = "Player";
+
+            var col = go.AddComponent<BoxCollider2D>();
+            col.isTrigger = true;
+            col.size = new Vector2(3.5f, 3f);   // talk zone around the NPC
+
+            var npc = go.AddComponent<SafeStreets.DialogNPC>();
+            npc.conversation = conversation;
+            npc.interactLabel = name;
+
+            var labelGo = new GameObject("Name");
+            labelGo.transform.SetParent(go.transform);
+            labelGo.transform.localPosition = new Vector3(0f, 0.75f, 0f);
+            var tm = labelGo.AddComponent<TextMesh>();
+            SafeStreets.DialogStyle.Style(tm, 0.12f, 26, TextAnchor.MiddleCenter, Color.white, 5);
+            tm.text = name;
         }
 
         private static void MakeBuilding(Transform parent, string label, Vector2 pos, Vector2 size, string interactLabel)
