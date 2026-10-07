@@ -75,19 +75,53 @@ namespace SafeStreets.EditorTools
             MakeBuilding(root.transform, "SHOP", new Vector3(-11, -8.5f), new Vector2(8, 5), "shop", Palette["Shop"], "the corner shop");
 
             // ---- Kid player at the bottom sidewalk (spawn reset every build) ----
-            var player = NewSprite(root.transform, "Player", "kid", Palette["Kid"], new Vector3(0, -3.7f, -10), new Vector2(1.0f, 1.0f));
+            const string SheetPath = "Assets/Sprites/Ninja/player_sheet.png";
+            if (!AssetDatabase.IsValidFolder("Assets/Sprites/Ninja"))
+                AssetDatabase.CreateFolder("Assets/Sprites", "Ninja");
+
+            var player = new GameObject("Player");
+            player.transform.SetParent(root.transform);
+            player.transform.position = new Vector3(0, -3.7f, -10f);
             player.tag = "Player";
+            var psr = player.AddComponent<SpriteRenderer>();
+            psr.sprite = GetOrCreateSprite("kid", Palette["Kid"]);   // fallback until sheet sliced
+            psr.sortingOrder = 10;                                    // in front of world
+            var psc = psr; // alias for readability below
+
+            var sheetImporter = (TextureImporter)AssetImporter.GetAtPath(SheetPath);
+            if (sheetImporter != null && sheetImporter.spriteImportMode != SpriteImportMode.Multiple)
+            {
+                SetupWalkSheet(sheetImporter);
+            }
+
             var rb = player.AddComponent<Rigidbody2D>();
             var col = player.AddComponent<CapsuleCollider2D>();
-            col.size = new Vector2(0.8f, 0.9f);
-            player.AddComponent<SafeStreets.PlayerController2D>();
+            col.size = new Vector2(0.55f, 0.45f);   // 16px sprite: smaller feet-area collider
+            col.offset = new Vector2(0f, -0.15f);
+            var controller = player.AddComponent<SafeStreets.PlayerController2D>();
+
+            var animator = player.AddComponent<SafeStreets.PlayerAnimator>();
+            animator.walkDown = LoadRow(SheetPath, "down");
+            animator.walkUp = LoadRow(SheetPath, "up");
+            animator.walkLeft = LoadRow(SheetPath, "left");
+            animator.walkRight = LoadRow(SheetPath, "right");
+
+            // drop shadow (the pack's own shadow sprite) — sells the 2.5D look
+            var shadow = new GameObject("Shadow");
+            shadow.transform.SetParent(player.transform);
+            shadow.transform.localPosition = new Vector3(0f, -0.35f, 1f);
+            var ssr = shadow.AddComponent<SpriteRenderer>();
+            var shadowTex = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/Sprites/Ninja/shadow.png");
+            if (shadowTex != null) ssr.sprite = shadowTex;
+            ssr.sortingOrder = 9;
+            ssr.color = new Color(0f, 0f, 0f, 0.4f);
 
             // ---- Camera ----
             var camGo = new GameObject("MainCamera2D");
             camGo.tag = "MainCamera";
             var cam = camGo.AddComponent<Camera>();
             cam.orthographic = true;
-            cam.orthographicSize = 8f;
+            cam.orthographicSize = 4.5f;   // tighter view: 16px sprites, was 8 for big tiles
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.30f, 0.42f, 0.30f);
             camGo.AddComponent<SafeStreets.CameraFollow2D>().target = player.transform;
@@ -163,10 +197,48 @@ namespace SafeStreets.EditorTools
             return sprite;
         }
 
-        /// <summary>Zone-glow sprite uses the same persisted-asset pipeline (white, tinted at runtime).</summary>
-        internal static Sprite GetOrCreateSpriteForZone(string key)
+        /// <summary>Slice a 16x16 walk sheet (7 rows x 4 cols) into per-row sprite arrays.</summary>
+        private static void SetupWalkSheet(TextureImporter importer)
         {
-            return GetOrCreateSprite(key, Color.white);
+            importer.textureType = TextureImporterType.Sprite;
+            importer.spriteImportMode = SpriteImportMode.Multiple;
+            importer.filterMode = FilterMode.Point;
+            importer.mipmapEnabled = false;
+            importer.textureCompression = TextureImporterCompression.Uncompressed;
+
+            var meta = new System.Collections.Generic.List<SpriteMetaData>();
+            string[] names = { "down", "up", "left", "right", "rundown", "runup", "runleft" };
+            for (int row = 0; row < 7; row++)
+            {
+                for (int col = 0; col < 4; col++)
+                {
+                    meta.Add(new SpriteMetaData
+                    {
+                        name = $"{names[row]}{col}",
+                        rect = new Rect(col * 16, row * 16, 16, 16),
+                        alignment = (int)SpriteAlignment.Center,
+                        pivot = new Vector2(0.5f, 0.5f),
+                    });
+                }
+            }
+            importer.spritesheet = meta.ToArray();
+            importer.SaveAndReimport();
+        }
+
+        /// <summary>Load the 4 frames of one walk row from the sliced sheet.</summary>
+        private static Sprite[] LoadRow(string sheetPath, string rowName)
+        {
+            var assets = AssetDatabase.LoadAllAssetsAtPath(sheetPath);
+            var row = new Sprite[4];
+            foreach (var a in assets)
+            {
+                if (a is Sprite s && s.name.StartsWith(rowName))
+                {
+                    if (int.TryParse(s.name.Substring(rowName.Length), out int idx) && idx >= 0 && idx < 4)
+                        row[idx] = s;
+                }
+            }
+            return row;
         }
 
         private static GameObject MakeBuilding(Transform parent, string label, Vector2 pos, Vector2 size, string spriteKey, Color color, string interactLabel)
