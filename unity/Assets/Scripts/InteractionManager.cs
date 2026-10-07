@@ -79,8 +79,13 @@ namespace SafeStreets
         {
             Open = it;
             UpdateHint(null);
-            var pc = GameObject.FindWithTag("Player")?.GetComponent<PlayerController2D>();
-            if (pc != null) pc.enabled = false;
+            var player = GameObject.FindWithTag("Player");
+            var pc = player?.GetComponent<PlayerController2D>();
+            if (pc != null)
+            {
+                pc.Paused = true;                       // freezes FixedUpdate input
+                pc.GetComponent<Rigidbody2D>().linearVelocity = Vector2.zero;   // kill slide instantly
+            }
 
             _panelBody.text = "You are looking at " + it.label + ".\n\n(More content coming soon.)";
             _panel.SetActive(true);
@@ -92,7 +97,7 @@ namespace SafeStreets
             Open = null;
             _panel.SetActive(false);
             var pc = GameObject.FindWithTag("Player")?.GetComponent<PlayerController2D>();
-            if (pc != null) pc.enabled = true;
+            if (pc != null) pc.Paused = false;
         }
 
         private Interactable FindCandidate()

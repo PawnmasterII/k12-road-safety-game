@@ -8,6 +8,10 @@ namespace SafeStreets
     {
         public float speed = 4f;
 
+        /// <summary>When true (interaction popup open) the player is fully frozen —
+        /// velocity is zeroed every physics step, so held keys or residual motion stop dead.</summary>
+        public bool Paused { get; set; }
+
         /// <summary>Test hook: set via editor tooling to drive the player without a keyboard.</summary>
         public Vector2 debugMove;
 
@@ -23,6 +27,14 @@ namespace SafeStreets
 
         private void FixedUpdate()
         {
+            if (Paused)
+            {
+                // Disabling this component is NOT enough — the Rigidbody2D keeps its last
+                // velocity and the player slides on. Zero it every physics frame while paused.
+                _rb.linearVelocity = Vector2.zero;
+                return;
+            }
+
             float h = Input.GetAxisRaw("Horizontal");
             float v = Input.GetAxisRaw("Vertical");
             Vector2 move = new Vector2(h, v);
