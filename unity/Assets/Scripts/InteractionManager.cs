@@ -42,14 +42,40 @@ namespace SafeStreets
 
             if (Open != null)
             {
-                UpdateHint(null);
+                UpdateHint(null, null);
                 if (Input.GetKeyDown(KeyCode.Space)) Close();
                 return;
             }
 
+            // Crossing NPCs take priority: SPACE near them starts their dialog
+            var crossNpc = FindCrossingNpc();
+            if (crossNpc != null)
+            {
+                UpdateHint(crossNpc.transform, "Press SPACE to talk");
+                if (Input.GetKeyDown(KeyCode.Space)) crossNpc.Talk();
+                return;
+            }
+
             Candidate = FindCandidate();
-            UpdateHint(Candidate);
-            if (Candidate != null && Input.GetKeyDown(KeyCode.Space)) OpenUp(Candidate);
+            if (Candidate != null)
+            {
+                UpdateHint(Candidate.transform, "Press SPACE");
+                if (Input.GetKeyDown(KeyCode.Space)) OpenUp(Candidate);
+            }
+            else
+            {
+                UpdateHint(null, null);
+            }
+        }
+
+        private SafeStreets.CrossingNPC FindCrossingNpc()
+        {
+            foreach (var cnpc in FindObjectsByType<SafeStreets.CrossingNPC>(FindObjectsSortMode.None))
+            {
+                var to = cnpc.transform.position - _player.position;
+                if (to.magnitude <= 2.2f) return cnpc;
+            }
+            return null;
         }
 
         /// <summary>Distance from a world point to the interactable's collider edge (2D).</summary>
@@ -78,7 +104,7 @@ namespace SafeStreets
         private void OpenUp(Interactable it)
         {
             Open = it;
-            UpdateHint(null);
+            UpdateHint(null, null);
             var player = GameObject.FindWithTag("Player");
             var pc = player?.GetComponent<PlayerController2D>();
             if (pc != null)
@@ -146,9 +172,9 @@ namespace SafeStreets
             r.sortingOrder = sortingOrder;
         }
 
-        private void UpdateHint(Interactable it)
+        private void UpdateHint(Transform target, string text)
         {
-            if (it == null)
+            if (target == null)
             {
                 if (_hint != null) _hint.SetActive(false);
                 return;
@@ -157,11 +183,13 @@ namespace SafeStreets
             {
                 _hint = new GameObject("InteractHint");
                 var tm = _hint.AddComponent<TextMesh>();
-                StyleText(tm, "Press SPACE", 0.16f, 30, TextAnchor.MiddleCenter,
+                DialogStyle.Style(tm, 0.14f, 28, TextAnchor.MiddleCenter,
                     new Color(1f, 0.95f, 0.6f), 30);
+                _hint.GetComponent<MeshRenderer>().sortingLayerName = "Decor";
             }
+            _hint.GetComponent<TextMesh>().text = text;
             _hint.SetActive(true);
-            _hint.transform.position = it.transform.position + new Vector3(0f, 3.6f, -3f);
+            _hint.transform.position = target.position + new Vector3(0f, 0.8f, -3f);
         }
 
         // ---- the "Interaction" popup ----

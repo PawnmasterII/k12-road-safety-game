@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 131e1dca5f7f2ca42be00771cea61f30, type: 3}
+  m_Name: Conv_Ada
+  m_EditorClassIdentifier: Assembly-CSharp::SafeStreets.Conversation
+  speakerName: Officer Ada
+  lines:
+  - Hi! I'm Officer Ada. This street needs your help!
+  - Three friends need to cross the road. Talk to them and help them cross safely.
+  - Press SPACE to talk to anyone with a speech marker above their head.
+  closingTip: 
