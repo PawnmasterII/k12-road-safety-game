@@ -157,6 +157,7 @@ namespace SafeStreets
             }
 
             _panel.SetActive(true);
+            PanelAnimator.Ensure(_panel).FadeIn();
             PositionPanel();
             ShowQuestion();
             return true;
@@ -249,9 +250,13 @@ namespace SafeStreets
             IsOpen = false;
             Source = null;
             StopAllCoroutines();
-            _panel.SetActive(false);
-            var pc = GameObject.FindWithTag("Player")?.GetComponent<PlayerController2D>();
-            if (pc != null) pc.Paused = false;
+            // R6 (GGD-style): fade out, THEN deactivate; resume movement when hidden
+            var pa = PanelAnimator.Ensure(_panel);
+            pa.FadeOut(() =>
+            {
+                var pc = GameObject.FindWithTag("Player")?.GetComponent<PlayerController2D>();
+                if (pc != null) pc.Paused = false;
+            });
             if (!completed && !_finished && _bank != null)
                 Debug.Log($"[Quiz] abandoned activity={_bank.activityId}");
             _bank = null;

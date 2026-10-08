@@ -80,6 +80,7 @@ namespace SafeStreets
             if (player != null) player.GetComponent<PlayerController2D>().Paused = true;
 
             _panel.SetActive(true);
+            PanelAnimator.Ensure(_panel).FadeIn();
             Position();
             ShowCurrent();
         }
@@ -88,9 +89,12 @@ namespace SafeStreets
         {
             IsOpen = false;
             Source = null;
-            _panel.SetActive(false);
-            var player = GameObject.FindWithTag("Player");
-            if (player != null) player.GetComponent<PlayerController2D>().Paused = false;
+            // R6 (GGD-style): fade out, then deactivate; resume movement when hidden
+            PanelAnimator.Ensure(_panel).FadeOut(() =>
+            {
+                var player = GameObject.FindWithTag("Player");
+                if (player != null) player.GetComponent<PlayerController2D>().Paused = false;
+            });
             var cb = _onDone; _onDone = null;
             cb?.Invoke();
         }

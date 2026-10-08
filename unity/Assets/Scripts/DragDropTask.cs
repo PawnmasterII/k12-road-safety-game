@@ -174,7 +174,9 @@ namespace SafeStreets
 
         private void Update()
         {
-            // drag handling (mouse); depth = camera plane offset so world z stays 0
+            // drag handling (mouse); depth = camera plane offset so world z stays 0.
+            // R6 (GGD GamepadCursor port): the TILE follows the pointer with a lerp,
+            // not a hard snap — removes the jittery feel on drag.
             var cam = Camera.main;
             if (cam == null) return;
             var mouseWorld = cam.ScreenToWorldPoint(
@@ -191,13 +193,19 @@ namespace SafeStreets
             }
             if (_dragging && _dragTile != null && Input.GetMouseButton(0))
             {
-                _dragTile.go.transform.position = new Vector3(mouseWorld.x, mouseWorld.y, 0f);
+                var cur = _dragTile.go.transform.position;
+                var target = new Vector3(mouseWorld.x, mouseWorld.y, 0f);
+                _dragTile.go.transform.position = Vector3.Lerp(cur, target, Mathf.Min(1f, DragSmoothing * Time.deltaTime * 60f));
             }
             if (_dragging && Input.GetMouseButtonUp(0)) DropTile(_dragTile);
         }
 
         private Tile _dragTile;
         private bool _dragging;
+
+        [Header("GGD GamepadCursor port")]
+        /// <summary>Tile chase speed: 1 = instant snap, lower = smoother follow.</summary>
+        public float DragSmoothing = 14f;
 
         private void DropTile(Tile t)
         {
