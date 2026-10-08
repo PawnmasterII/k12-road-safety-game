@@ -201,10 +201,12 @@ namespace SafeStreets
             var backdrop = new GameObject("Backdrop");
             backdrop.transform.SetParent(_panel.transform, false);
             var sr = backdrop.AddComponent<SpriteRenderer>();
-            sr.sprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 1f);
+            // 4x4 white texture at PPU 1 = 4x4 world units natural; scale to 8x5 exactly.
+            // (Sliced mode is banned — Tight-mesh degenerate geometry trap.)
+            sr.sprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 4, 4),
+                new Vector2(0.5f, 0.5f), 1f, 0, SpriteMeshType.FullRect);
             sr.color = new Color(0.07f, 0.13f, 0.20f, 0.97f);
-            sr.drawMode = SpriteDrawMode.Sliced;
-            sr.size = new Vector2(8f, 5f);
+            backdrop.transform.localScale = new Vector3(2f, 1.25f, 1f);
             sr.sortingOrder = 40;
 
             var title = new GameObject("Title");
@@ -236,6 +238,10 @@ namespace SafeStreets
             var xcol = _xButton.AddComponent<BoxCollider2D>();
             xcol.size = new Vector2(0.9f, 0.9f);
             _xButton.AddComponent<InteractCloseButton>();
+
+            // Hidden until OpenUp shows it. (BuildPanel runs at Awake; without this the
+            // panel is born visible and squats on screen from launch — the launch bug.)
+            _panel.SetActive(false);
         }
 
         private void PositionPanel()
