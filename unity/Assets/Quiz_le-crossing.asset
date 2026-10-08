@@ -1,0 +1,62 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 0}
+  m_Name: Quiz_le-crossing
+  m_EditorClassIdentifier: Assembly-CSharp:SafeStreets:QuizBank
+  activityId: le-crossing
+  title: Crossing with a Grown-Up
+  questions:
+  - kind: 1
+    prompt: Where do you stop before you cross the street?
+    trueIsCorrect: 0
+    choices:
+    - At the curb
+    - In the middle of the road
+    - On the grass far away
+    - Anywhere I like
+    correctIndex: 0
+    source: 'Guide, Preschool-Grade 1: stop at the curb; hold an adult''s hand'
+  - kind: 1
+    prompt: Who helps you cross the road?
+    trueIsCorrect: 0
+    choices:
+    - A grown-up
+    - Nobody
+    - My pet
+    - A stranger
+    correctIndex: 0
+    source: 'Guide, Preschool-Grade 1: adult-led crossing'
+  - kind: 1
+    prompt: Your ball rolls into the street. What do you do?
+    trueIsCorrect: 0
+    choices:
+    - Tell a grown-up
+    - Chase it quickly
+    - Wait for cars and grab it
+    - Throw my hat at it
+    correctIndex: 0
+    source: 'Guide, Preschool-Grade 1: children do not chase a ball or retrieve an
+      item'
+  - kind: 0
+    prompt: Before crossing, I stop, look, and listen.
+    trueIsCorrect: 1
+    choices: []
+    correctIndex: 0
+    source: 'Guide, Preschool-Grade 1: stop, look, listen, wait for an adult, cross
+      together'
+  - kind: 0
+    prompt: A parking lot is safe to walk in only when a grown-up stays close.
+    trueIsCorrect: 1
+    choices: []
+    correctIndex: 0
+    source: 'Guide, Preschool-Grade 1: keep an adult close in parking lots; they
+      are not play spaces'

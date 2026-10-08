@@ -1,0 +1,65 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 0}
+  m_Name: Quiz_rr-florida
+  m_EditorClassIdentifier: Assembly-CSharp:SafeStreets:QuizBank
+  activityId: rr-florida
+  title: Florida Rules & Risk Radar
+  questions:
+  - kind: 1
+    prompt: Florida requires how many supervised driving hours (including 10 at night)
+      before a teen license?
+    trueIsCorrect: 0
+    choices:
+    - 50 hours
+    - 10 hours
+    - 100 hours
+    - 5 hours
+    correctIndex: 0
+    source: 'Guide, Grades 9-12: FLHSMV lists 50 hours of supervised driving, including
+      10 at night'
+  - kind: 1
+    prompt: A 16-year-old licensed driver in Florida generally may drive between...
+    trueIsCorrect: 0
+    choices:
+    - 6 a.m. and 11 p.m.
+    - Any time
+    - 9 a.m. and 5 p.m.
+    - Midnight and 6 a.m.
+    correctIndex: 0
+    source: 'Guide, Grades 9-12: 16-year-old license generally carries a 6 a.m.-11
+      p.m. limit'
+  - kind: 1
+    prompt: Florida's 3-foot rule applies when a driver is...
+    trueIsCorrect: 0
+    choices:
+    - Passing a bicyclist
+    - Passing a school
+    - Changing lanes
+    - Parking
+    correctIndex: 0
+    source: 'Guide, Task 3 of proposal: selected Florida rules such as the 3-foot
+      passing rule'
+  - kind: 0
+    prompt: 'Best habit before starting the car: set navigation and stow the phone.'
+    trueIsCorrect: 1
+    choices: []
+    correctIndex: 0
+    source: 'Guide, Grades 9-12: set navigation before moving; silence and stow the
+      phone'
+  - kind: 0
+    prompt: A car full of friends helps a new driver focus at night.
+    trueIsCorrect: 0
+    choices: []
+    correctIndex: 0
+    source: 'Guide, Grades 9-12: limited experience combined with peer passengers
+      and night driving can increase risk'

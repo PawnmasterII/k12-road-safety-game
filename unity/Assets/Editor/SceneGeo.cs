@@ -32,6 +32,7 @@ namespace SafeStreets.EditorTools
             // ---- Systems ----
             new GameObject("InteractionManager").AddComponent<SafeStreets.InteractionManager>();
             new GameObject("DialogManager").AddComponent<SafeStreets.DialogManager>();
+            new GameObject("QuizManager").AddComponent<SafeStreets.QuizManager>();
             new GameObject("QuestManager").AddComponent<SafeStreets.QuestManager>();
 
             // ---- Ground plane (one big quad, not tiles) ----
@@ -85,6 +86,76 @@ namespace SafeStreets.EditorTools
                 "Will you walk me over the stripes?");
             AssetDatabase.CreateAsset(mia, "Assets/Conv_Mia.asset");
             MakeNpc(root, "Mia", new Color(0.90f, 0.62f, 0.35f), new Vector3(-2.5f, 3.2f, 0f), mia, wantsCrossing: true);
+
+            // ---- Feature 002: quiz banks (prompts/citations from backend/content.py,
+            //      K-12 Traffic Safety Education Resource Guide) — 3 MC + 2 TF each ----
+            var bankLe = MakeBank("le-crossing", "Crossing with a Grown-Up",
+                MC("Where do you stop before you cross the street?",
+                    "At the curb", "In the middle of the road", "On the grass far away", "Anywhere I like",
+                    "Guide, Preschool-Grade 1: stop at the curb; hold an adult's hand"),
+                MC("Who helps you cross the road?",
+                    "A grown-up", "Nobody", "My pet", "A stranger",
+                    "Guide, Preschool-Grade 1: adult-led crossing"),
+                MC("Your ball rolls into the street. What do you do?",
+                    "Tell a grown-up", "Chase it quickly", "Wait for cars and grab it", "Throw my hat at it",
+                    "Guide, Preschool-Grade 1: children do not chase a ball or retrieve an item"),
+                TF("Before crossing, I stop, look, and listen.", true,
+                    "Guide, Preschool-Grade 1: stop, look, listen, wait for an adult, cross together"),
+                TF("A parking lot is safe to walk in only when a grown-up stays close.", true,
+                    "Guide, Preschool-Grade 1: keep an adult close in parking lots; they are not play spaces"));
+            var bankSh = MakeBank("sh-school-bike", "School Zone + Bike Gear",
+                MC("Where should you cross the street near school?",
+                    "At the crosswalk or crossing guard", "Anywhere it is shorter", "Between parked cars", "Around the corner",
+                    "Guide, Grades 2-3: use a designated crossing; follow guard instructions"),
+                MC("How should your bike helmet fit?",
+                    "Level on your head with snug straps", "Tilted back to look cool", "Loose so it is comfy", "Backwards",
+                    "Guide, Grades 4-5: helmet level, two finger-widths above eyebrows, straps form a V"),
+                MC("You drop something near the school bus. What do you do?",
+                    "Tell the bus driver", "Quickly grab it", "Ask a friend to get it", "Come back for it later",
+                    "Guide, Grades 2-3: if an item falls near the bus, tell the driver instead of retrieving it"),
+                TF("Wearing bright colors or reflectors helps drivers see me.", true,
+                    "Guide, Grades 4-5: increase visibility in low light; visibility topic"),
+                TF("When crossing, I only need to watch for fast cars.", false,
+                    "Guide, Grades 2-3: look for turning vehicles, driveway traffic, backing vehicles"));
+            var bankSt = MakeBank("st-riding", "Riding Ready: Bikes + Phones",
+                MC("Florida law: who must wear a helmet when riding a bicycle?",
+                    "Riders under 16", "Only racers", "Nobody", "Only adults",
+                    "Guide, Florida legal checks: F.S. 316.2065 requires riders and passengers under 16 to wear a helmet"),
+                MC("Your phone buzzes while you are riding. What do you do?",
+                    "Stop in a safe place before checking", "Check it while riding", "Answer with one hand", "Have a friend read it while riding",
+                    "Guide, Grades 6-8: stop in a safe place before checking navigation or messages"),
+                MC("Where might a driver NOT see you, even in daylight?",
+                    "In the driver's blind spot or beside parked cars (door zone)", "Only at night", "Only on highways", "Nowhere - drivers always see bikes",
+                    "Guide, Grades 6-8: door zone, large-vehicle blind spots, 'I can see, I can be seen'"),
+                TF("An e-bike needs more distance to stop because it is faster and heavier.", true,
+                    "Guide, Grades 6-8: e-bike speed and handling - allow more stopping distance"),
+                TF("It is okay to speed up when turning my bike, to get it over with.", false,
+                    "Guide, Grades 6-8: scanning before turns, hand signals, predictable riding"));
+            var bankRr = MakeBank("rr-florida", "Florida Rules & Risk Radar",
+                MC("Florida requires how many supervised driving hours (including 10 at night) before a teen license?",
+                    "50 hours", "10 hours", "100 hours", "5 hours",
+                    "Guide, Grades 9-12: FLHSMV lists 50 hours of supervised driving, including 10 at night"),
+                MC("A 16-year-old licensed driver in Florida generally may drive between...",
+                    "6 a.m. and 11 p.m.", "Any time", "9 a.m. and 5 p.m.", "Midnight and 6 a.m.",
+                    "Guide, Grades 9-12: 16-year-old license generally carries a 6 a.m.-11 p.m. limit"),
+                MC("Florida's 3-foot rule applies when a driver is...",
+                    "Passing a bicyclist", "Passing a school", "Changing lanes", "Parking",
+                    "Guide, Task 3 of proposal: selected Florida rules such as the 3-foot passing rule"),
+                TF("Best habit before starting the car: set navigation and stow the phone.", true,
+                    "Guide, Grades 9-12: set navigation before moving; silence and stow the phone"),
+                TF("A car full of friends helps a new driver focus at night.", false,
+                    "Guide, Grades 9-12: limited experience combined with peer passengers and night driving can increase risk"));
+            AssetDatabase.CreateAsset(bankLe, "Assets/Quiz_le-crossing.asset");
+            AssetDatabase.CreateAsset(bankSh, "Assets/Quiz_sh-school-bike.asset");
+            AssetDatabase.CreateAsset(bankSt, "Assets/Quiz_st-riding.asset");
+            AssetDatabase.CreateAsset(bankRr, "Assets/Quiz_rr-florida.asset");
+
+            // ---- Feature 002: walk-in quiz zones (zone-to-bank mapping is a design choice:
+            //      crossing zone teaches crossing, school zone school-zone rules, etc.) ----
+            MakeQuizZone(root, "Quiz_Zebra", new Vector3(0f, 0f, -3f), new Vector2(3.6f, 5.2f), bankLe, "QUIZ: Crossing");
+            MakeQuizZone(root, "Quiz_School", new Vector3(-11f, 4.9f, -3f), new Vector2(3.4f, 2.4f), bankSh, "QUIZ: School");
+            MakeQuizZone(root, "Quiz_Park", new Vector3(12f, 4.9f, -3f), new Vector2(3.4f, 2.4f), bankSt, "QUIZ: Park");
+            MakeQuizZone(root, "Quiz_Shop", new Vector3(-11f, -4.9f, -3f), new Vector2(3.4f, 2.4f), bankRr, "QUIZ: Shop");
 
             // ---- Player: orange circle ----
             var player = new GameObject("Player");
@@ -265,6 +336,62 @@ namespace SafeStreets.EditorTools
             c.speakerName = speaker;
             c.lines = lines;
             return c;
+        }
+
+        // ---- Feature 002 helpers ----
+
+        /// <summary>Multiple-choice question (correct = the FIRST choice; MC shuffles nothing).</summary>
+        private static SafeStreets.QuizQuestion MC(string prompt, string correct,
+            string wrong1, string wrong2, string wrong3, string source)
+            => new SafeStreets.QuizQuestion
+            {
+                kind = QuestionKind.MultipleChoice,
+                prompt = prompt,
+                choices = new[] { correct, wrong1, wrong2, wrong3 },
+                correctIndex = 0,
+                source = source,
+            };
+
+        /// <summary>True/false question (right/wrong).</summary>
+        private static SafeStreets.QuizQuestion TF(string statement, bool trueIsCorrect, string source)
+            => new SafeStreets.QuizQuestion
+            {
+                kind = QuestionKind.TrueFalse,
+                prompt = statement,
+                trueIsCorrect = trueIsCorrect,
+                source = source,
+            };
+
+        private static SafeStreets.QuizBank MakeBank(string activityId, string title,
+            params SafeStreets.QuizQuestion[] questions)
+        {
+            var b = ScriptableObject.CreateInstance<SafeStreets.QuizBank>();
+            b.activityId = activityId;
+            b.title = title;
+            b.questions = questions;
+            return b;
+        }
+
+        /// <summary>Translucent walk-in zone + trigger + QuizZone + floating label.</summary>
+        private static void MakeQuizZone(GameObject parent, string name, Vector3 pos,
+            Vector2 size, SafeStreets.QuizBank bank, string label)
+        {
+            var go = Shape(parent, name, new Color(1f, 0.95f, 0.4f, 0.18f), pos, size);
+            var sr = go.GetComponent<SpriteRenderer>();
+            sr.sortingOrder = -3;
+            var col = go.AddComponent<BoxCollider2D>();
+            col.isTrigger = true;
+            col.size = size;
+            var zone = go.AddComponent<SafeStreets.QuizZone>();
+            zone.bank = bank;
+
+            var labelGo = new GameObject("ZoneLabel");
+            labelGo.transform.SetParent(go.transform);
+            labelGo.transform.localPosition = new Vector3(0f, size.y * 0.5f + 0.45f, 0f);
+            var tm = labelGo.AddComponent<TextMesh>();
+            SafeStreets.DialogStyle.Style(tm, 0.12f, 28, TextAnchor.MiddleCenter,
+                new Color(1f, 0.95f, 0.6f), 5);
+            tm.text = label;
         }
 
         /// <summary>Persisted 1x1 white square (shared by NPCs).</summary>
