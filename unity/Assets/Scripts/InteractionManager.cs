@@ -21,6 +21,23 @@ namespace SafeStreets
         public Interactable Candidate { get; private set; }
         public Interactable Open { get; private set; }
 
+        // ---- Spec 004: task minigame state (GGD TaskPanel flow) ----
+        /// <summary>True while a TaskPanel (minigame) owns input/movement.</summary>
+        public static bool TaskPaused { get; private set; }
+
+        /// <summary>Called by TaskPanel.Open/Close — pauses movement like popups do.</summary>
+        public static void PauseForTask(bool pause)
+        {
+            TaskPaused = pause;
+            var player = GameObject.FindWithTag("Player");
+            var pc = player != null ? player.GetComponent<PlayerController2D>() : null;
+            if (pc != null)
+            {
+                pc.Paused = pause;
+                if (pause) pc.GetComponent<Rigidbody2D>().linearVelocity = Vector2.zero;
+            }
+        }
+
         private Transform _player;
         private GameObject _hint;
         private GameObject _panel;
@@ -44,6 +61,8 @@ namespace SafeStreets
             if (_pc == null) _pc = _player.GetComponent<PlayerController2D>();
 
             // Feature 002: an open quiz (or dialog) owns input — nothing else routes
+            // Spec 004: an open minigame owns input first of all
+            if (TaskPaused) return;
             if (QuizManager.Instance != null && QuizManager.Instance.IsOpen) return;
             if (DialogManager.Instance != null && DialogManager.Instance.IsOpen) return;
 
@@ -82,8 +101,14 @@ namespace SafeStreets
             Candidate = FindCandidate();
             if (Candidate != null)
             {
-                UpdateHint(Candidate.transform, "Press SPACE");
-                if (Input.GetKeyDown(KeyCode.Space)) OpenUp(Candidate);
+                // Spec 004: buildings with a minigame open it; others show the info popup
+                UpdateHint(Candidate.transform,
+                    Candidate.TaskGame != null ? "Press SPACE to start the task" : "Press SPACE");
+                if (Input.GetKeyDown(KeyCode.Space))
+                {
+                    if (Candidate.TaskGame != null) Candidate.TaskGame.Open();
+                    else OpenUp(Candidate);
+                }
             }
             else
             {

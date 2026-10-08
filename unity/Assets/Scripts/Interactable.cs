@@ -17,6 +17,10 @@ namespace SafeStreets
         public Color HighlightColor = new Color(1.3f, 1.25f, 1.0f);  // warm brighten (HDR-ish)
         public float FadeSpeed = 0.05f;                              // GGD FADE_SPEED
 
+        [Header("Spec 004: task minigame (GGD TaskPanel)")]
+        /// <summary>Set by the scene build: when present, SPACE opens this minigame instead of the info popup.</summary>
+        public TaskPanel TaskGame;
+
         /// <summary>Proximity zones collected from children (GGD keeps proximities[]).</summary>
         public Proximity2D[] Proximities { get; private set; } = System.Array.Empty<Proximity2D>();
 

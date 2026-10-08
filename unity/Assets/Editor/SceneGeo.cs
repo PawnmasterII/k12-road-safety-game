@@ -186,6 +186,13 @@ namespace SafeStreets.EditorTools
             float worldRadius = 0.75f;
             senseCol.radius = worldRadius / Mathf.Max(0.0001f, player.transform.localScale.x);
 
+            // ---- Spec 004 (GGD FogOfWar): dark overlay + vision mesh + NPC LOS hiding.
+            //      The component self-bootstraps at PLAY start (scene reload wipes
+            //      runtime refs); here we only place the component in the scene.
+            var fogGo = new GameObject("FogOfWar2D");
+            fogGo.transform.SetParent(root.transform);
+            fogGo.AddComponent<SafeStreets.FogOfWar2D>();
+
             // ---- Camera ----
             var camGo = new GameObject("MainCamera");
             camGo.tag = "MainCamera";
@@ -307,6 +314,19 @@ namespace SafeStreets.EditorTools
             zoneCol.size = size + new Vector2(2.4f, 1.6f);
             zoneGo.AddComponent<SafeStreets.Proximity2D>();
             inter.CollectProximities();
+
+            // ---- Spec 004 (GGD SeeThroughMesh): fade the building while the player
+            //      stands in its zone so the character is never hidden behind it.
+            go.AddComponent<SafeStreets.SeeThroughWall2D>();
+
+            // ---- Spec 004 (GGD TaskPanel): SCHOOL hosts the crossing-steps minigame.
+            if (label == "SCHOOL")
+            {
+                var task = SafeStreets.DragDropTask.Create(parent,
+                    "Get ready to cross",
+                    new[] { "Stop at the curb", "Look left, look right", "Hold a grown-up's hand" });
+                inter.TaskGame = task;
+            }
 
             var labelGo = new GameObject("Label");
             labelGo.transform.SetParent(go.transform);
