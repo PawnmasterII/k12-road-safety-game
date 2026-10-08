@@ -30,8 +30,8 @@ export default function HomePage() {
           </div>
         ) : (
           <div className="hero-actions">
-            <Link className="btn btn-primary" to="/signup">Make your account</Link>
-            <Link className="btn btn-ghost" to="/login">I already have one</Link>
+            <Link className="btn btn-primary" to="/login">Log in or make an account</Link>
+            <Link className="btn btn-ghost" to="/guest">Play as a guest</Link>
           </div>
         )}
       </header>

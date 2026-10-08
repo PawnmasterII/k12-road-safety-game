@@ -174,6 +174,18 @@ namespace SafeStreets.EditorTools
             player.AddComponent<SafeStreets.PlayerController2D>();
             SetWorldSize(psr, new Vector2(0.8f, 0.8f));   // player body: 0.8 world units (visual)
 
+            // ---- Spec 003 (GGD): second collider — the "sense bubble". A child
+            //      TRIGGER that walks into Proximity2D zones; the solid body above
+            //      still blocks walls. GGD: roomCollider + PlayerTriggerCollider.
+            //      NOTE: SetWorldSize scaled the player ROOT (~0.125), so express
+            //      the radius in WORLD units by dividing by the inherited scale.
+            var sense = new GameObject("SenseTrigger");
+            sense.transform.SetParent(player.transform, false);
+            var senseCol = sense.AddComponent<CircleCollider2D>();
+            senseCol.isTrigger = true;
+            float worldRadius = 0.75f;
+            senseCol.radius = worldRadius / Mathf.Max(0.0001f, player.transform.localScale.x);
+
             // ---- Camera ----
             var camGo = new GameObject("MainCamera");
             camGo.tag = "MainCamera";
@@ -282,7 +294,19 @@ namespace SafeStreets.EditorTools
             sr.sortingLayerName = "Collision";
             var box = go.AddComponent<BoxCollider2D>();
             box.size = size;
-            go.AddComponent<SafeStreets.Interactable>().label = interactLabel;
+            var inter = go.AddComponent<SafeStreets.Interactable>();
+            inter.label = interactLabel;
+
+            // ---- Spec 003 (GGD): a Proximity2D walk-in zone extending past the
+            //      walls — standing in it makes this building the candidate.
+            var zoneGo = new GameObject("Proximity2D");
+            zoneGo.transform.SetParent(go.transform, false);
+            var zoneCol = zoneGo.AddComponent<BoxCollider2D>();
+            zoneCol.isTrigger = true;
+            zoneCol.offset = new Vector2(0f, -0.55f);   // biased toward the road (approach side)
+            zoneCol.size = size + new Vector2(2.4f, 1.6f);
+            zoneGo.AddComponent<SafeStreets.Proximity2D>();
+            inter.CollectProximities();
 
             var labelGo = new GameObject("Label");
             labelGo.transform.SetParent(go.transform);

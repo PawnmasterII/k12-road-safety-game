@@ -25,6 +25,12 @@ namespace SafeStreets
         /// strip before any kid-facing build.</summary>
         public Vector2 debugMove;
 
+        /// <summary>GGD PlayerController.IS_RUNNING_THRESHOLD — below this, you're idle.</summary>
+        public const float IsRunningThreshold = 0.01f;
+
+        /// <summary>True while input magnitude exceeds GGD's run threshold.</summary>
+        public bool IsRunning { get; private set; }
+
         private Rigidbody2D _rb;
         private Vector2 _face = Vector2.down;
 
@@ -50,18 +56,30 @@ namespace SafeStreets
             if (move.sqrMagnitude < 0.01f && debugMove.sqrMagnitude > 0.01f)
                 move = debugMove;
 
-            if (move.sqrMagnitude > 0.01f)
+            if (move.sqrMagnitude > IsRunningThreshold)
             {
                 move.Normalize();
                 _face = move;
                 CurrentMove = move;
+                IsRunning = true;
             }
             else
             {
                 CurrentMove = Vector2.zero;
+                IsRunning = false;
             }
 
             _rb.linearVelocity = move * speed;
+        }
+
+        /// <summary>
+        /// GGD PlayableEntity.TeleportTo: move to a position and zero velocity,
+        /// so physics doesn't carry momentum into the new spot.
+        /// </summary>
+        public void TeleportTo(Vector2 position)
+        {
+            _rb.linearVelocity = Vector2.zero;
+            transform.position = new Vector3(position.x, position.y, transform.position.z);
         }
     }
 }

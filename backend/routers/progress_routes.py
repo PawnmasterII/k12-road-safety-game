@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 import content
 import db
-from routers.auth_routes import require_student
+from routers.auth_routes import optional_student, require_student
 
 router = APIRouter(prefix="/api", tags=["progress"])
 
@@ -52,7 +52,7 @@ def get_progress(authorization: str | None = Header(default=None)):
 
 @router.post("/activities/{activity_id}/submit")
 def submit(activity_id: str, body: SubmitBody, authorization: str | None = Header(default=None)):
-    student = require_student(authorization)
+    student = optional_student(authorization)  # None = guest: grade, but save nothing
     activity = content.activity_by_id(activity_id)
     if activity is None:
         raise HTTPException(status_code=404, detail="Activity not found.")
@@ -65,6 +65,9 @@ def submit(activity_id: str, body: SubmitBody, authorization: str | None = Heade
         1 for q, a in zip(questions, body.answers)
         if isinstance(a, int) and 0 <= a < len(q["choices"]) and a == q["correct_index"]
     )
+
+    if student is None:
+        return {"score": score, "best_score": None, "total_score": None, "new_badges": []}
 
     best = db.upsert_progress(student["id"], activity_id, score)
     new_badges = _badge_rules(student["id"], activity_id, score, len(questions))
