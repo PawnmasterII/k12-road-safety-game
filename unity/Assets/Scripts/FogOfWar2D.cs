@@ -1,63 +1,65 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace SafeStreets
 {
     /// <summary>
-    /// Spec 004 — GGD FogOfWar port (mechanics only).
-    /// GGD reference (dump.cs 238551): accuracy (ray count), fieldOfView cone,
-    /// baseViewDistance, layerMask walls, recomputeMeshEveryXFrame, vision mesh
-    /// (verticesBuffer/trianglesBuffer -> MeshFilter), flashlight mode optional.
+    /// Spec 004 R3 — GGD FogOfWar port, third pass. R1/R2 "buggy all over the place"
+    /// post-mortem, three independent root causes found and fixed here:
     ///
-    /// This port: casts Rays from the player across a FOV cone, builds the lit
-    /// vision polygon as a Mesh (MeshFilter), and draws a dark overlay quad
-    /// UNDER the mesh — inside the polygon you see the world, outside it is dim.
-    /// Walls block rays (ContactFilter2D, useTriggers=false: only solid
-    /// "Collision" layer colliders — the same layer buildings are on).
-    /// Non-visible entities (NPCs) are hidden; the player is never hidden.
+    ///   A. WALLS NEVER BLOCKED SIGHT: the raycast mask uses physics layer
+    ///      "Collision" (slot 10), but SceneGeo never assigned it — buildings sat on
+    ///      Default(0) and every sight ray passed through every wall. Sight was pure
+    ///      distance. Fixed in SceneGeo.MakeBuilding (go.layer = Collision); verified
+    ///      SCHOOL reports physicsLayer=10.
+    ///   B. THE TWO-QUAD DESIGN WAS STRUCTURALLY WRONG: a dark overlay quad + faint
+    ///      "light" mesh on top can never PUNCH A HOLE — alpha blending just stacks,
+    ///      so the vision area stayed washed no matter what. R3 uses the standard
+    ///      inversion: ONE dark mesh that covers everything EXCEPT the vision
+    ///      polygon. Each ring edge is extruded outward past the map corners
+    ///      (polar-space quads, seam- and overlap-free), so darkness ends exactly
+    ///      where sight ends. Sharp wall corners use the hinge-vertex trick so
+    ///      the silhouette bends instead of smearing.
+    ///   C. THIS PROJECT HAS EXACTLY ONE SORTING LAYER ("Default") — every named
+    ///      sortingLayerName in the project (Player/Collision/Decor) silently
+    ///      no-ops to Default, and global sortingOrder does all the layering:
+    ///      ground -10 ... buildings 0, NPCs 5, player 10 | fog 20 | panels 40+.
+    ///      The fog is on Default @ 20 — above the world, below every panel.
+    ///
+    /// GGD reference (dump.cs 238551): accuracy (ray count), fieldOfView
+    /// (default = full circle; lower it for the flashlight-mode variant),
+    /// baseViewDistance, layerMask walls, recomputeMeshEveryXFrame.
     /// </summary>
     public class FogOfWar2D : MonoBehaviour
     {
         [Header("GGD tweakables")]
-        public int Accuracy = 96;              // GGD: accuracy (1..720)
+        public int Accuracy = 120;             // GGD: accuracy (1..720)
         [Range(10f, 360f)]
-        public float FieldOfView = 140f;       // GGD: fieldOfView (degrees, cone)
+        public float FieldOfView = 360f;       // full circle by default (GGD); 60-140 = flashlight
         public float BaseViewDistance = 7f;    // GGD: baseViewDistance
         public int RecomputeEveryXFrame = 2;   // GGD: recomputeMeshEveryXFrame
-        public LayerMask WallMask;             // GGD: layerMask (walls only)
 
         [Header("Look")]
-        public Color DimColor = new Color(0.02f, 0.04f, 0.08f, 0.82f); // outside vision
-        public Color LightColor = new Color(1.0f, 0.95f, 0.8f, 0.22f); // inside vision
+        public Color DimColor = new Color(0.02f, 0.04f, 0.08f, 0.62f);  // outside vision
 
         public bool Enabled2 { get; private set; } = true;
 
-        [Header("Map coverage (fog quad bounds)")]
-        public float MapMinX = -20f;
-        public float MapMaxX = 20f;
-        public float MapMinY = -13f;
-        public float MapMaxY = 13f;
-
-        private Transform _origin;             // the player
-        private Mesh _visionMesh;              // lit polygon (GGD verticesBuffer)
+        private Transform _origin;
+        private Mesh _fogMesh;                 // THE mesh: whole map minus vision polygon
         private MeshFilter _mf;
-        private GameObject _overlay;           // dim quad
-        private GameObject _lightMeshGo;
+        private GameObject _fogGo;
         private int _frame;
         private bool _booted;
-        private ContactFilter2D _wallFilter;   // solid colliders only — triggers never block sight
+        private ContactFilter2D _wallFilter;
         private readonly RaycastHit2D[] _hitBuf = new RaycastHit2D[1];
 
         public int LastVertexCount { get; private set; }
+        public string LastShader { get; private set; } = "n/a";
+        public int LastHingeCount { get; private set; }
 
-        /// <summary>
-        /// Self-bootstraps at PLAY start (scene reload wipes runtime refs, so the rig
-        /// is rebuilt here, not in the editor-time scene build).
-        /// </summary>
-        private void Start()
-        {
-            Boot();
-        }
+        private void Start() => Boot();
 
+        /// <summary>Self-bootstraps at PLAY start (scene reload wipes runtime refs).</summary>
         private void Boot()
         {
             if (_booted) return;
@@ -66,34 +68,25 @@ namespace SafeStreets
             _origin = player.transform;
             _wallFilter = new ContactFilter2D
             {
-                useTriggers = false,       // GGD: walls block, trigger zones never do
+                useTriggers = false,       // GGD: walls block sight, trigger zones never do
                 useLayerMask = true,
                 layerMask = LayerMask.GetMask("Collision"),
             };
             _frame = 0;
 
-            // ---- dark overlay quad (covers the whole map, above ground/road/decor) ----
-            _overlay = new GameObject("FogOverlay");
-            var sr = _overlay.AddComponent<SpriteRenderer>();
-            sr.sprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 4, 4),
-                new Vector2(0.5f, 0.5f), 1f, 0, SpriteMeshType.FullRect);
-            sr.color = DimColor;
-            _overlay.transform.localScale = new Vector3(MapMaxX - MapMinX + 4f, MapMaxY - MapMinY + 4f, 1f);
-            _overlay.transform.position = new Vector3((MapMinX + MapMaxX) * 0.5f, (MapMinY + MapMaxY) * 0.5f, -1f);
-            sr.sortingLayerName = "Decor";
-            sr.sortingOrder = 20;
-
-            // ---- lit vision mesh (rebuilt every N frames, GGD style) ----
-            _lightMeshGo = new GameObject("FogLightMesh");
-            _mf = _lightMeshGo.AddComponent<MeshFilter>();
-            var mr = _lightMeshGo.AddComponent<MeshRenderer>();
-            _visionMesh = new Mesh { name = "VisionMesh" };
-            _visionMesh.MarkDynamic();
-            _mf.sharedMesh = _visionMesh;
-            _visionMesh.vertices = new Vector3[0];
-            _visionMesh.triangles = new int[0];
-            mr.sortingLayerName = "Decor";
-            mr.sortingOrder = 21;
+            _fogGo = new GameObject("FogMesh");
+            _mf = _fogGo.AddComponent<MeshFilter>();
+            var mr = _fogGo.AddComponent<MeshRenderer>();
+            var shader = Shader.Find("Sprites/Default");   // unlit — this project has no lights
+            mr.material = new Material(shader);
+            LastShader = shader != null ? shader.name : "NULL";
+            _fogMesh = new Mesh { name = "FogComplementMesh" };
+            _fogMesh.MarkDynamic();
+            _mf.sharedMesh = _fogMesh;
+            _fogMesh.vertices = new Vector3[0];
+            _fogMesh.triangles = new int[0];
+            mr.sortingLayerName = "Default";
+            mr.sortingOrder = 20;                  // above world (<=10), below panels (40+)
             _booted = true;
         }
 
@@ -104,47 +97,91 @@ namespace SafeStreets
             _frame++;
             if (_frame % RecomputeEveryXFrame != 0) return;
 
-            var center = _origin.position;
+            Vector2 center = _origin.position;
             float facing = FacingAngle();
-            float half = FieldOfView * 0.5f;
+            int rays = Mathf.Max(8, Accuracy);
+            float half = FieldOfView >= 360f ? 180f : FieldOfView * 0.5f;
 
-            // GGD: cast `accuracy` rays across the cone, each stops at the wall it hits
-            var verts = new Vector3[Accuracy + 2];
-            var tris = new int[Accuracy * 3];
-            verts[0] = center;
+            // ---- ring: cast rays, collect the vision polygon boundary ----
+            var ring = new List<Vector3>(rays + 8);
+            var ringDirs = new List<Vector2>(rays + 8);    // unit direction per ring vertex
+            Collider2D prevHit = null;
+            int hinges = 0;
 
-            for (int i = 0; i < Accuracy; i++)
+            for (int i = 0; i < rays; i++)
             {
-                float ang = (facing - half) + (FieldOfView * i) / (Accuracy - 1);
+                float t = rays == 1 ? 0f : (float)i / (rays - 1);
+                float ang = FieldOfView >= 360f
+                    ? facing - 180f + 360f * (i / (float)rays)     // full circle, no duplicated seam ray
+                    : (facing - half) + FieldOfView * t;
                 var dir = new Vector2(Mathf.Cos(ang * Mathf.Deg2Rad), Mathf.Sin(ang * Mathf.Deg2Rad));
 
                 float dist = BaseViewDistance;
                 int hits = Physics2D.Raycast(center, dir, _wallFilter, _hitBuf);
+                Collider2D hitCol = null;
                 if (hits > 0 && _hitBuf[0].fraction > 0f)
+                {
                     dist = Mathf.Clamp(_hitBuf[0].distance, 0.1f, BaseViewDistance);
+                    hitCol = _hitBuf[0].collider;
+                }
 
-                verts[i + 1] = center + (Vector3)(dir * dist);
+                var point = center + dir * dist;
+                bool surfaceChanged = i > 0 && !SameSurface(hitCol, prevHit, dist, BaseViewDistance);
+                if (surfaceChanged)
+                {
+                    ring.Add(ring[ring.Count - 1]);            // hinge: bend at the corner
+                    ringDirs.Add(ringDirs[ringDirs.Count - 1]);
+                    hinges++;
+                }
+
+                ring.Add(point);
+                ringDirs.Add(dir);
+                prevHit = hitCol;
             }
+            LastHingeCount = hinges;
 
-            for (int i = 0; i < Accuracy; i++)
+            // ---- build the DARK COMPLEMENT: ring edges extruded far outward ----
+            // quad per segment: (a_i, a_j) ring edge -> (b_i, b_j) far edge.
+            // FAR=60 covers the whole map from anywhere on it (max half-diagonal ~24).
+            const float FAR = 60f;
+            int n = ring.Count;
+            var verts = new List<Vector3>(n * 2);
+            var tris = new List<int>(n * 6);
+
+            for (int i = 0; i < n; i++)
             {
-                int t = i * 3;
-                tris[t] = 0;
-                tris[t + 1] = i + 1;
-                tris[t + 2] = i + 2;
+                int j = (i + 1) % n;                            // wraps the ring closed
+                verts.Add(ring[i]);
+                verts.Add(ring[j]);
+                var bi = center + ringDirs[i] * FAR;
+                var bj = center + ringDirs[j] * FAR;
+                verts.Add(bj);
+                verts.Add(bi);
+
+                int v = i * 4;
+                // quad (a_i, a_j, b_j, b_i) as two triangles; Cull Off shader — winding safe
+                tris.Add(v);     tris.Add(v + 1); tris.Add(v + 2);   // a_i, a_j, b_j
+                tris.Add(v);     tris.Add(v + 2); tris.Add(v + 3);   // a_i, b_j, b_i
             }
 
-            _visionMesh.Clear();
-            _visionMesh.vertices = verts;
-            _visionMesh.triangles = tris;
-            _visionMesh.RecalculateBounds();
-            LastVertexCount = verts.Length;
+            _fogMesh.Clear();
+            _fogMesh.vertices = verts.ToArray();
+            _fogMesh.triangles = tris.ToArray();
+            _fogMesh.RecalculateBounds();
+            LastVertexCount = n;
 
-            // tint via material color (unlit default material)
-            _lightMeshGo.GetComponent<MeshRenderer>().material.color = LightColor;
+            // ---- entity visibility: NPCs need LOS (GGD hides non-visible entities) ----
+            UpdateEntityVisibility(center);
+        }
 
-            // ---- entity visibility: raycast to each NPC (GGD hides non-visible) ----
-            UpdateEntityVisibility(center, facing, half);
+        /// <summary>True when two adjacent rays effectively hit the same surface.</summary>
+        private static bool SameSurface(Collider2D a, Collider2D b, float distA, float maxDist)
+        {
+            bool hitA = a != null && distA < maxDist - 0.001f;
+            bool hitB = b != null;
+            if (hitA != hitB) return false;
+            if (!hitA) return true;                 // both rays ended in open space
+            return a == b;
         }
 
         private float FacingAngle()
@@ -154,8 +191,11 @@ namespace SafeStreets
             return Mathf.Atan2(f.y, f.x) * Mathf.Rad2Deg;
         }
 
-        private void UpdateEntityVisibility(Vector2 center, float facing, float half)
+        private void UpdateEntityVisibility(Vector2 center)
         {
+            float half = FieldOfView >= 360f ? 180f : FieldOfView * 0.5f;
+            float facing = FacingAngle();
+
             foreach (var npc in Object.FindObjectsByType<DialogNPC>(FindObjectsSortMode.None))
             {
                 var pos = (Vector2)npc.transform.position;
@@ -164,27 +204,28 @@ namespace SafeStreets
 
                 if (to.sqrMagnitude <= BaseViewDistance * BaseViewDistance)
                 {
-                    float ang = Mathf.Abs(Mathf.DeltaAngle(facing, Mathf.Atan2(to.y, to.x) * Mathf.Rad2Deg));
-                    if (ang <= half + 5f) // slight grace so edge NPCs don't flicker
+                    bool inCone = FieldOfView >= 360f ||
+                        Mathf.Abs(Mathf.DeltaAngle(facing, Mathf.Atan2(to.y, to.x) * Mathf.Rad2Deg)) <= half + 5f;
+                    if (inCone)
                     {
-                        int n = Physics2D.Raycast(center, to.normalized, _wallFilter, _hitBuf,
+                        int blocked = Physics2D.Raycast(center, to.normalized, _wallFilter, _hitBuf,
                             to.magnitude - 0.05f);
-                        visible = n == 0; // wall between? (triggers excluded by filter)
+                        visible = blocked == 0;
                     }
                 }
 
                 var sr = npc.GetComponent<SpriteRenderer>();
                 if (sr != null) sr.enabled = visible;
                 var label = npc.transform.Find("Name");
-                if (label != null) label.gameObject.SetActive(visible);
+                if (label != null && label.gameObject.activeSelf != visible)
+                    label.gameObject.SetActive(visible);
             }
         }
 
         private void OnDestroy()
         {
-            if (_visionMesh != null) Destroy(_visionMesh);
-            if (_overlay != null) Destroy(_overlay);
-            if (_lightMeshGo != null) Destroy(_lightMeshGo);
+            if (_fogMesh != null) Destroy(_fogMesh);
+            if (_fogGo != null) Destroy(_fogGo);
         }
     }
 }
