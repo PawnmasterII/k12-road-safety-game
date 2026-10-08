@@ -57,6 +57,17 @@ def require_student(authorization: str | None) -> sqlite3.Row:
     return row
 
 
+def optional_student(authorization: str | None) -> sqlite3.Row | None:
+    """Like require_student, but returns None for guests (no/bad token) instead of 401."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    token = authorization.split(" ", 1)[1].strip()
+    student_id = auth_mod.verify_token(token)
+    if student_id is None:
+        return None
+    return db.get_student(student_id)
+
+
 @router.post("/signup")
 def signup(body: SignupBody):
     if body.grade not in VALID_GRADES:

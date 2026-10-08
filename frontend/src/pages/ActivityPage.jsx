@@ -67,7 +67,9 @@ export default function ActivityPage() {
           <button className="btn" onClick={() => { setResult(null); setAnswers({}); setCurrent(0) }}>Play again</button>
           <Link className="btn btn-primary" to={getToken() ? '/dashboard' : '/'}>Go home</Link>
         </div>
-        <p className="muted small">Score added: {result.score} point{result.score === 1 ? '' : 's'} · Total: {result.total_score}</p>
+        {result.total_score !== null && (
+          <p className="muted small">Score added: {result.score} point{result.score === 1 ? '' : 's'} · Total: {result.total_score}</p>
+        )}
         <p className="muted tiny">Immediate feedback builds stronger safety habits — that's the {pct}% spirit!</p>
       </div>
     )

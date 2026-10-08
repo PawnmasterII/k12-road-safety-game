@@ -5,6 +5,7 @@ import './styles.css'
 import HomePage from './pages/HomePage.jsx'
 import Signup from './pages/Signup.jsx'
 import Login from './pages/Login.jsx'
+import GuestPage from './pages/GuestPage.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import ActivityPage from './pages/ActivityPage.jsx'
 
@@ -15,6 +16,7 @@ createRoot(document.getElementById('root')).render(
         <Route path="/" element={<HomePage />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/guest" element={<GuestPage />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/activity/:moduleId" element={<ActivityPage />} />
       </Routes>

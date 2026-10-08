@@ -3,18 +3,20 @@ using UnityEngine;
 namespace SafeStreets
 {
     /// <summary>
-    /// The whole interaction feature, deliberately simple:
-    ///   - Near + facing an Interactable  ->  floating "Press SPACE" hint
-    ///   - SPACE (near+facing) or clicking the object  ->  popup titled "Interaction"
-    ///   - SPACE again, or clicking the X in the corner  ->  popup exits, movement resumes
-    /// Near = distance to the object's COLLIDER EDGE (buildings are big; center distance lies).
+    /// The whole interaction feature — GGD-style since spec 003:
+    ///   - Each Interactable owns Proximity2D child zones (trigger colliders).
+    ///   - Walking into a zone (player sense bubble overlaps) makes it the
+    ///     candidate: floating "Press SPACE" hint + glow on the object.
+    ///   - SPACE opens the popup; SPACE again / X closes it, movement resumes.
+    ///   - No facing check: GGD candidates by overlap, not aim (any approach works).
+    /// Feature 002 router priority = quiz zone > crossing NPC > talk NPC > building.
     /// </summary>
     public class InteractionManager : MonoBehaviour
     {
         public static InteractionManager Instance { get; private set; }
 
-        public float range = 1.8f;        // edge distance that counts as "next to"
-        public float facingDot = 0.35f;   // ~69 degrees half-cone
+        public float range = 1.8f;        // kept for click-to-open reach check
+        public float facingDot = 0.35f;   // legacy knob (unused by overlap model)
 
         public Interactable Candidate { get; private set; }
         public Interactable Open { get; private set; }
@@ -178,21 +180,37 @@ namespace SafeStreets
             if (pc != null) pc.Paused = false;
         }
 
+        /// <summary>
+        /// GGD model: candidate = the Interactable whose Proximity zone the
+        /// player is currently overlapping. Nearest zone-edge wins; ties broken
+        /// by most-recent entry. No facing requirement — any approach counts.
+        /// </summary>
         private Interactable FindCandidate()
         {
             Interactable best = null;
             float bestDist = float.MaxValue;
+            float bestEnter = float.MinValue;
+
             foreach (var it in FindObjectsByType<Interactable>(FindObjectsSortMode.None))
             {
-                var col = it.GetComponent<Collider2D>();
-                if (col == null) continue;
+                if (!it.IsPlayerInProximity) continue;           // GGD: overlap, not distance
+                if (it == Open) continue;
 
-                var closest = col.ClosestPoint(_player.position);
-                var to = closest - (Vector2)_player.position;
-                float dist = to.magnitude;
-                if (dist > range) continue;
-                if (dist > 0.05f && !PlayerFacing(to)) continue;
-                if (dist < bestDist) { bestDist = dist; best = it; }
+                var zone = it.CurrentZone;
+                float entered = zone != null ? zone.EnteredAt : float.MinValue;
+
+                float dist = 0f;
+                var col = it.GetComponent<Collider2D>();
+                if (col != null && _player != null)
+                    dist = Vector2.Distance(col.ClosestPoint(_player.position), _player.position);
+
+                if (dist < bestDist - 0.05f ||                       // clearly nearer edge wins
+                    (dist <= bestDist + 0.05f && entered > bestEnter)) // near-tie: latest entry
+                {
+                    bestDist = dist;
+                    bestEnter = entered;
+                    best = it;
+                }
             }
             return best;
         }
