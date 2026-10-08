@@ -70,16 +70,46 @@ namespace SafeStreets
             }
 
             _rb.linearVelocity = move * speed;
+            HandleStepAndFlip(move);
         }
 
-        /// <summary>
-        /// GGD PlayableEntity.TeleportTo: move to a position and zero velocity,
-        /// so physics doesn't carry momentum into the new spot.
-        /// </summary>
+        /// <summary>GGD PlayableEntity.TeleportTo: move to a position and zero velocity,
+        /// so physics doesn't carry momentum into the new spot.</summary>
         public void TeleportTo(Vector2 position)
         {
             _rb.linearVelocity = Vector2.zero;
             transform.position = new Vector3(position.x, position.y, transform.position.z);
+        }
+
+        [Header("GGD PlayableEntity port (spec 004)")]
+        /// <summary>GGD RUN_CYCLE_DEFAULT — seconds per footstep beat while running.</summary>
+        public float RunCycle = 0.25f;
+        /// <summary>GGD facingRight — sprite flip mirrors horizontal input.</summary>
+        public bool FacingRight { get; private set; } = true;
+        /// <summary>Fired on each RunCycle beat while moving (footstep/anim hook).</summary>
+        public event System.Action OnStep;
+
+        private float _stepAccum;
+        private SpriteRenderer _sr;
+
+        private void HandleStepAndFlip(Vector2 move)
+        {
+            // GGD facingRight: flip the sprite with horizontal input
+            if (_sr == null) _sr = GetComponent<SpriteRenderer>();
+            if (_sr != null && Mathf.Abs(move.x) > IsRunningThreshold)
+                _sr.flipX = move.x < 0f;
+
+            // GGD runCycle: OnStep every RunCycle seconds while running
+            if (IsRunning)
+            {
+                _stepAccum += Time.fixedDeltaTime;
+                if (_stepAccum >= RunCycle)
+                {
+                    _stepAccum = 0f;
+                    OnStep?.Invoke();
+                }
+            }
+            else _stepAccum = 0f;
         }
     }
 }
