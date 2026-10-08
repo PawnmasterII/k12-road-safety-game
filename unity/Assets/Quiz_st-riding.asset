@@ -1,0 +1,63 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 0}
+  m_Name: Quiz_st-riding
+  m_EditorClassIdentifier: Assembly-CSharp:SafeStreets:QuizBank
+  activityId: st-riding
+  title: 'Riding Ready: Bikes + Phones'
+  questions:
+  - kind: 1
+    prompt: 'Florida law: who must wear a helmet when riding a bicycle?'
+    trueIsCorrect: 0
+    choices:
+    - Riders under 16
+    - Only racers
+    - Nobody
+    - Only adults
+    correctIndex: 0
+    source: 'Guide, Florida legal checks: F.S. 316.2065 requires riders and passengers
+      under 16 to wear a helmet'
+  - kind: 1
+    prompt: Your phone buzzes while you are riding. What do you do?
+    trueIsCorrect: 0
+    choices:
+    - Stop in a safe place before checking
+    - Check it while riding
+    - Answer with one hand
+    - Have a friend read it while riding
+    correctIndex: 0
+    source: 'Guide, Grades 6-8: stop in a safe place before checking navigation or
+      messages'
+  - kind: 1
+    prompt: Where might a driver NOT see you, even in daylight?
+    trueIsCorrect: 0
+    choices:
+    - In the driver's blind spot or beside parked cars (door zone)
+    - Only at night
+    - Only on highways
+    - Nowhere - drivers always see bikes
+    correctIndex: 0
+    source: 'Guide, Grades 6-8: door zone, large-vehicle blind spots, ''I can see,
+      I can be seen'''
+  - kind: 0
+    prompt: An e-bike needs more distance to stop because it is faster and heavier.
+    trueIsCorrect: 1
+    choices: []
+    correctIndex: 0
+    source: 'Guide, Grades 6-8: e-bike speed and handling - allow more stopping distance'
+  - kind: 0
+    prompt: It is okay to speed up when turning my bike, to get it over with.
+    trueIsCorrect: 0
+    choices: []
+    correctIndex: 0
+    source: 'Guide, Grades 6-8: scanning before turns, hand signals, predictable
+      riding'

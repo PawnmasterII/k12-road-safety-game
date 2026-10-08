@@ -41,6 +41,10 @@ namespace SafeStreets
             }
             if (_pc == null) _pc = _player.GetComponent<PlayerController2D>();
 
+            // Feature 002: an open quiz (or dialog) owns input — nothing else routes
+            if (QuizManager.Instance != null && QuizManager.Instance.IsOpen) return;
+            if (DialogManager.Instance != null && DialogManager.Instance.IsOpen) return;
+
             if (Open != null)
             {
                 UpdateHint(null, null);
@@ -48,7 +52,15 @@ namespace SafeStreets
                 return;
             }
 
-            // --- ONE input router: priority = open popup > crossing NPC > talk NPC > building ---
+            // --- ONE input router: priority = quiz zone > crossing NPC > talk NPC > building ---
+            var quizZone = FindNearQuizZone();
+            if (quizZone != null)
+            {
+                UpdateHint(quizZone.transform, "Press SPACE for the quiz");
+                if (Input.GetKeyDown(KeyCode.Space)) quizZone.StartQuiz();
+                return;
+            }
+
             var crossNpc = FindNearCrossingNpc();
             if (crossNpc != null)
             {
@@ -90,6 +102,15 @@ namespace SafeStreets
         }
 
         private PlayerController2D _pc;
+
+        private SafeStreets.QuizZone FindNearQuizZone()
+        {
+            foreach (var zone in FindObjectsByType<SafeStreets.QuizZone>(FindObjectsSortMode.None))
+            {
+                if (Vector2.Distance(zone.transform.position, _player.position) <= 2.6f) return zone;
+            }
+            return null;
+        }
 
         private SafeStreets.CrossingNPC FindNearCrossingNpc()
         {

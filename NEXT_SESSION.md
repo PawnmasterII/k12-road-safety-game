@@ -93,6 +93,29 @@ unity command get_scene_hierarchy --project-path .
 
 ## Housekeeping
 
+- **Session 5 (feature 002 — quiz question popups, DONE + verified)**: two question kinds —
+  TrueFalse (statement → TRUE/FALSE, keys 1/2 or T/F) and MultipleChoice (2-4 options, keys 1-4,
+  or click any answer bar). QuizBank ScriptableObjects at `Assets/Quiz_*.asset` (content mirrored
+  from `backend/content.py`, every answer cites the K-12 Guide). 4 walk-in zones (Zebra/School/
+  Park/Shop → le-crossing/sh-school-bike/st-riding/rr-florida): walk in → card opens, player
+  frozen; SPACE inside also starts it; ESC or X abandons (no completion logged); zone re-arms on
+  exit so re-entry restarts. Right/wrong feedback + citation, then score screen +
+  `[Quiz] completed activity=<id> score=<s>/<n>` log. InteractionManager router: quiz zone is
+  now priority #1, and an open quiz/dialog blocks all other interaction routing.
+  Verified: recompile 0 errors, play-mode `wait_for` met, freeze proof (position identical across
+  101 frames while movement input held), 5 OCR'd captures in `Assets/Captures/quiz*.png`,
+  score math exact (scripted 4/5), console 0 errors. Spec: `specs/002-quiz-question-popups/`.
+- **DEFECT (log only, don't auto-fix)**: during session-5 play testing, two `[Quiz] completed`
+  logs (2/5, 5/5) appeared at 04:40 with no agent input, and the player had drifted from spawn
+  to (2.68, 3.20). Real keyboard input (numbers/T/F/SPACE) is reaching the unfocused-but-playing
+  Editor window while autotick keeps it live — a stray keypress can silently answer quizzes or
+  restart them. Suspect the physical keyboard was touched; if reproducible, gate quiz keys on
+  `Application.isFocused` or add an input-focus guard.
+- **Session 4 (guest flow)**: Home page now has 2 buttons — "Log in or make an account" (/login)
+  and "Play as a guest" (/guest → GuestPage.jsx grade-band picker → module activity). Backend
+  `/api/activities/{id}/submit` now grades guests anonymously via `optional_student()` (score only,
+  nothing persisted, no badges); logged-in path unchanged (best score + badges). All verified
+  E2E in-browser: guest K-2 → Perfect 5/5; logged-in signup still earns badges.
 - 5.1 GB installers in C:/Users/dongt/unity-setup/ can be deleted once confident.
 - Backend was stopped this session; Vite/Unity may still be running — kill by port if needed
   (`netstat -ano | grep :5173` / `taskkill //PID <pid> //F`).
