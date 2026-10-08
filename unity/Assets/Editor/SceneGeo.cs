@@ -363,12 +363,14 @@ namespace SafeStreets.EditorTools
             {
                 var c = go.AddComponent<SafeStreets.CrossingNPC>();
                 c.npcName = name;
+                go.AddComponent<SafeStreets.FogEntity>();   // R4: fades in/out with vision (GGD)
             }
             else
             {
                 var npc = go.AddComponent<SafeStreets.DialogNPC>();
                 npc.conversation = conv;
                 npc.interactLabel = name;
+                go.AddComponent<SafeStreets.FogEntity>();   // R4: fades in/out with vision (GGD)
             }
 
             var labelGo = new GameObject("Name");
