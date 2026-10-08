@@ -4,43 +4,41 @@ using UnityEngine;
 namespace SafeStreets
 {
     /// <summary>
-    /// Spec 004 R3 — GGD FogOfWar port, third pass. R1/R2 "buggy all over the place"
-    /// post-mortem, three independent root causes found and fixed here:
+    /// Spec 004 R4 — GGD FogOfWar port. Fixes on top of R3:
+    ///   D. THE DARK ZONE WASN'T TRANSPARENT-CONTROLLED: R3 never set the fog
+    ///      material's COLOR, so the dark complement rendered opaque white-ish and
+    ///      only the vision hole showed the world. R4 tints via VERTEX COLORS:
+    ///      vision-edge band alpha 0 -> full DimColor alpha, so darkness fades in
+    ///      over EdgeWidth units and the dark zone is translucent (map shows
+    ///      through, dimmed) exactly like GGD's fog.
+    ///   E. CHOPPY EDGE: recompute now runs EVERY frame (120-160 raycasts is
+    ///      trivial; every-2nd-frame made the boundary lag a frame behind the
+    ///      player and visibly stutter), ray count raised to 160, and the hard
+    ///      geometric cut is softened by the alpha band above.
+    ///   F. ENTITY HIDING COVERS EVERYTHING: any component with a FogEntity
+    ///      (NPCs, cars, ...) fades out in the dark zone via FogEntity (smooth
+    ///      fade, not the R3 hard enable/disable that only covered DialogNPC).
     ///
-    ///   A. WALLS NEVER BLOCKED SIGHT: the raycast mask uses physics layer
-    ///      "Collision" (slot 10), but SceneGeo never assigned it — buildings sat on
-    ///      Default(0) and every sight ray passed through every wall. Sight was pure
-    ///      distance. Fixed in SceneGeo.MakeBuilding (go.layer = Collision); verified
-    ///      SCHOOL reports physicsLayer=10.
-    ///   B. THE TWO-QUAD DESIGN WAS STRUCTURALLY WRONG: a dark overlay quad + faint
-    ///      "light" mesh on top can never PUNCH A HOLE — alpha blending just stacks,
-    ///      so the vision area stayed washed no matter what. R3 uses the standard
-    ///      inversion: ONE dark mesh that covers everything EXCEPT the vision
-    ///      polygon. Each ring edge is extruded outward past the map corners
-    ///      (polar-space quads, seam- and overlap-free), so darkness ends exactly
-    ///      where sight ends. Sharp wall corners use the hinge-vertex trick so
-    ///      the silhouette bends instead of smearing.
-    ///   C. THIS PROJECT HAS EXACTLY ONE SORTING LAYER ("Default") — every named
-    ///      sortingLayerName in the project (Player/Collision/Decor) silently
-    ///      no-ops to Default, and global sortingOrder does all the layering:
-    ///      ground -10 ... buildings 0, NPCs 5, player 10 | fog 20 | panels 40+.
-    ///      The fog is on Default @ 20 — above the world, below every panel.
-    ///
-    /// GGD reference (dump.cs 238551): accuracy (ray count), fieldOfView
-    /// (default = full circle; lower it for the flashlight-mode variant),
-    /// baseViewDistance, layerMask walls, recomputeMeshEveryXFrame.
+    /// R3 fixes (still in effect): walls block sight via physics layer
+    /// "Collision"; dark-complement mesh construction (overlay+light-mesh can't
+    /// punch a hole); hinge vertices at corners; single sorting layer "Default"
+    /// (order 20: above world <=10, below panels 40+).
+    /// GGD reference (dump.cs 238551): accuracy, fieldOfView (360 default;
+    /// 60-140 = flashlight mode), baseViewDistance, layerMask walls,
+    /// recomputeMeshEveryXFrame.
     /// </summary>
     public class FogOfWar2D : MonoBehaviour
     {
         [Header("GGD tweakables")]
-        public int Accuracy = 120;             // GGD: accuracy (1..720)
+        public int Accuracy = 160;             // GGD: accuracy (1..720)
         [Range(10f, 360f)]
         public float FieldOfView = 360f;       // full circle by default (GGD); 60-140 = flashlight
         public float BaseViewDistance = 7f;    // GGD: baseViewDistance
-        public int RecomputeEveryXFrame = 2;   // GGD: recomputeMeshEveryXFrame
+        public int RecomputeEveryXFrame = 1;   // GGD: recomputeMeshEveryXFrame (1 = every frame = smooth)
 
         [Header("Look")]
         public Color DimColor = new Color(0.02f, 0.04f, 0.08f, 0.62f);  // outside vision
+        public float EdgeWidth = 1.4f;         // penumbra band: 0 alpha at vision edge -> full here
 
         public bool Enabled2 { get; private set; } = true;
 
@@ -143,18 +141,34 @@ namespace SafeStreets
             // ---- build the DARK COMPLEMENT: ring edges extruded far outward ----
             // quad per segment: (a_i, a_j) ring edge -> (b_i, b_j) far edge.
             // FAR=60 covers the whole map from anywhere on it (max half-diagonal ~24).
+            // R4: vertex-color gradient — ring vertices alpha 0 (vision edge, clear),
+            // far vertices full DimColor alpha (deep dark). Sprites/Default is
+            // vertex-color * additive, so this is THE transparency control.
             const float FAR = 60f;
+            float edgeA = 0f;
+            float darkA = DimColor.a;
             int n = ring.Count;
+            var cols = new List<Color>(n * 2);
             var verts = new List<Vector3>(n * 2);
             var tris = new List<int>(n * 6);
 
             for (int i = 0; i < n; i++)
             {
                 int j = (i + 1) % n;                            // wraps the ring closed
+
+                // per-vertex alpha: full darkness once past EdgeWidth, fading to 0 at the ring
+                float ai = AlphaFor(Vector2.Distance(ring[i], center));
+                float aj = AlphaFor(Vector2.Distance(ring[j], center));
+                var ci = DimColor; ci.a = ai;
+                var cj = DimColor; cj.a = aj;
+                var cb = DimColor;
+
+                cols.Add(ci); cols.Add(cj);
                 verts.Add(ring[i]);
                 verts.Add(ring[j]);
                 var bi = center + ringDirs[i] * FAR;
                 var bj = center + ringDirs[j] * FAR;
+                cols.Add(cb); cols.Add(cb);
                 verts.Add(bj);
                 verts.Add(bi);
 
@@ -167,6 +181,7 @@ namespace SafeStreets
             _fogMesh.Clear();
             _fogMesh.vertices = verts.ToArray();
             _fogMesh.triangles = tris.ToArray();
+            _fogMesh.colors = cols.ToArray();
             _fogMesh.RecalculateBounds();
             LastVertexCount = n;
 
@@ -184,6 +199,18 @@ namespace SafeStreets
             return a == b;
         }
 
+        /// <summary>
+        /// Darkness alpha at a distance from the player: 0 inside EdgeWidth of the
+        /// vision edge, ramping linearly to full DimColor alpha beyond it. This is
+        /// the penumbra band that kills the "choppy hard cut".
+        /// </summary>
+        private float AlphaFor(float distFromCenter)
+        {
+            float bandStart = BaseViewDistance - EdgeWidth;
+            float t = (distFromCenter - bandStart) / Mathf.Max(0.05f, EdgeWidth);
+            return Mathf.Clamp01(t) * DimColor.a;
+        }
+
         private float FacingAngle()
         {
             var pc = _origin.GetComponent<PlayerController2D>();
@@ -196,9 +223,9 @@ namespace SafeStreets
             float half = FieldOfView >= 360f ? 180f : FieldOfView * 0.5f;
             float facing = FacingAngle();
 
-            foreach (var npc in Object.FindObjectsByType<DialogNPC>(FindObjectsSortMode.None))
+            foreach (var ent in Object.FindObjectsByType<FogEntity>(FindObjectsSortMode.None))
             {
-                var pos = (Vector2)npc.transform.position;
+                var pos = (Vector2)ent.transform.position;
                 var to = pos - center;
                 bool visible = false;
 
@@ -214,11 +241,7 @@ namespace SafeStreets
                     }
                 }
 
-                var sr = npc.GetComponent<SpriteRenderer>();
-                if (sr != null) sr.enabled = visible;
-                var label = npc.transform.Find("Name");
-                if (label != null && label.gameObject.activeSelf != visible)
-                    label.gameObject.SetActive(visible);
+                ent.SetInVision(visible);   // FogEntity fades smoothly (GGD-style)
             }
         }
 
