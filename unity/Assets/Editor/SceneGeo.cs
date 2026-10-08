@@ -297,6 +297,11 @@ namespace SafeStreets.EditorTools
         private static void MakeBuilding(GameObject parent, string label, Vector2 pos, Vector2 size, string interactLabel)
         {
             var go = Shape(parent, "Building_" + label, BuildingCol, new Vector3(pos.x, pos.y, 0f), size);
+            // ---- Physics layer MUST match the fog's raycast mask ("Collision", slot 10).
+            //      "Collision" the SORTING layer (set below) is unrelated — without this,
+            //      buildings sit on Default(0) and wall rays pass straight through them.
+            int lid = LayerMask.NameToLayer("Collision");
+            if (lid >= 0) go.layer = lid;
             var sr = go.GetComponent<SpriteRenderer>();
             sr.sortingLayerName = "Collision";
             var box = go.AddComponent<BoxCollider2D>();
