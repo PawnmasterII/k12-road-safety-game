@@ -31,6 +31,10 @@ namespace SafeStreets
         private void Awake()
         {
             Instance = this;
+            // _hud is RUNTIME state — it does NOT survive the edit->play transition
+            // (scene reload re-creates everything; only serialized fields persist).
+            // Re-acquire by object name so the HUD works however play mode was entered.
+            _hud = GameObject.Find("QuestHUD")?.GetComponent<TextMesh>();
         }
 
         public void RegisterHud(TextMesh hud, QuestData data)
@@ -52,6 +56,9 @@ namespace SafeStreets
                 OnAllCrossed?.Invoke();
             }
         }
+
+        /// <summary>Edit-mode-safe instance lookup for scene builders.</summary>
+        public static QuestManager Find() => FindFirstObjectByType<QuestManager>();
 
         private void Refresh()
         {

@@ -15,10 +15,14 @@ namespace SafeStreets
         /// <summary>Set by InteractionManager while a popup is open.</summary>
         public bool Paused { get; set; }
 
-        /// <summary>Last non-zero movement direction (animator facing).</summary>
+        /// <summary>Last non-zero movement direction (animator facing / interaction facing).</summary>
         public Vector2 CurrentMove { get; private set; }
 
-        /// <summary>Test hook: drives the player without a keyboard.</summary>
+        /// <summary>The direction the player last moved — the "facing" for interactions.</summary>
+        public Vector2 FaceDir => _face;
+
+        /// <summary>Test hook: drives the player without a keyboard. Dev/test only —
+        /// strip before any kid-facing build.</summary>
         public Vector2 debugMove;
 
         private Rigidbody2D _rb;

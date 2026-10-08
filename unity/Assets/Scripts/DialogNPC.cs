@@ -34,19 +34,16 @@ namespace SafeStreets
             }
         }
 
-        private void Update()
+        /// <summary>
+        /// Called by InteractionManager's input router (single SPACE owner).
+        /// Kept coarse: any nearness counts — the router only routes when the player
+        /// is within its own range, so this stays simple.
+        /// </summary>
+        public void StartDialogue()
         {
-            if (_playerNear && Input.GetKeyDown(KeyCode.Space) && DialogManager.Instance != null &&
-                !DialogManager.Instance.IsOpen)
-            {
-                DialogManager.Instance.StartDialog(conversation, gameObject);
-            }
-        }
-
-        private void OnMouseDown()
-        {
-            if (_playerNear && DialogManager.Instance != null && !DialogManager.Instance.IsOpen)
-                DialogManager.Instance.StartDialog(conversation, gameObject);
+            if (!_playerNear) _playerNear = true;   // router already gated on distance
+            if (DialogManager.Instance == null || DialogManager.Instance.IsOpen) return;
+            DialogManager.Instance.StartDialog(conversation, gameObject);
         }
     }
 }

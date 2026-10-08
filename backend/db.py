@@ -83,6 +83,19 @@ def find_student_by_login(first_name: str, school: str):
         conn.close()
 
 
+def find_students_by_name(first_name: str, school: str):
+    """ALL students sharing a first name + school (duplicate-name support)."""
+    conn = get_conn()
+    try:
+        return conn.execute(
+            "SELECT * FROM students WHERE first_name = ? COLLATE NOCASE AND school = ? COLLATE NOCASE"
+            " ORDER BY created_at",
+            (first_name, school),
+        ).fetchall()
+    finally:
+        conn.close()
+
+
 def get_student(student_id: int):
     conn = get_conn()
     try:

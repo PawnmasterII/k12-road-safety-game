@@ -36,20 +36,14 @@ namespace SafeStreets
             _thanks.lines = new[] { "Thank you! You're a safety hero!" };
         }
 
-        private void Start()
-        {
-            // give the NPC a DialogNPC-ish behavior via the manager: handled by InteractionManager
-            var im = InteractionManager.Instance;
-        }
-
         private void Update()
         {
             if (_following && !_crossed)
             {
                 if (_player == null) return;
 
-                bool onZebra = Mathf.Abs(transform.position.x) < 4.5f && Mathf.Abs(transform.position.y) < 3f;
-                if (onZebra && Vector2.Distance(transform.position, _player.position) < 2f)
+                if (InZebraZone(transform.position) && InZebraZone(_player.position)
+                    && Vector2.Distance(transform.position, _player.position) < 2f)
                 {
                     StartCoroutine(CrossAndLeave());
                     return;
@@ -61,6 +55,23 @@ namespace SafeStreets
                     transform.position = Vector3.MoveTowards(
                         transform.position, _player.position, 2.5f * Time.deltaTime);
             }
+        }
+
+        /// <summary>
+        /// Zebra zone read from the actual scene objects (any active Zebra* sprite),
+        /// not hardcoded numbers — moving/rebuilding the crossing can't silently break it.
+        /// </summary>
+        public static bool InZebraZone(Vector3 pos)
+        {
+            foreach (var z in GameObject.FindObjectsByType<SpriteRenderer>(FindObjectsSortMode.None))
+            {
+                if (!z.name.StartsWith("Zebra")) continue;
+                var b = z.bounds;
+                if (pos.x >= b.min.x - 0.3f && pos.x <= b.max.x + 0.3f
+                    && pos.y >= b.min.y - 0.3f && pos.y <= b.max.y + 0.3f)
+                    return true;
+            }
+            return false;
         }
 
         /// <summary>Called by InteractionManager when the player talks to this NPC.</summary>
@@ -90,8 +101,21 @@ namespace SafeStreets
                 yield return null;
             }
 
-            DialogManager.Instance.StartDialog(_thanks, gameObject);
-            yield return new WaitForSeconds(2.5f);
+            // thank-you WITHOUT freezing the player for a fixed timer: show the line,
+            // wait until it's read (or 6s cap), then despawn. No dialog race.
+            if (DialogManager.Instance != null && !DialogManager.Instance.IsOpen)
+            {
+                // one-shot toast line: reuse the dialog panel but DON'T set Source/Pause
+                var dm = DialogManager.Instance;
+                dm.StartDialog(_thanks, gameObject);
+                float waited = 0f;
+                while (dm.IsOpen && waited < 6f)
+                {
+                    waited += Time.deltaTime;
+                    yield return null;
+                }
+                if (dm.IsOpen && dm.Source == gameObject) dm.Close();
+            }
             Destroy(gameObject);
         }
     }

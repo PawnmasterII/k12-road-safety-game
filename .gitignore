@@ -4,3 +4,11 @@ node_modules/
 dist/
 __pycache__/
 .pytest_cache/
+
+# stray root Unity project (accident) — the real one lives in unity/
+[Ll]ibrary/
+[Pp]rojectSettings/
+[Uu]serSettings/
+[Ll]ogs/
+[Oo]bj/
+[Pp]ackages/
