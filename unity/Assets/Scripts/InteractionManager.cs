@@ -39,6 +39,7 @@ namespace SafeStreets
                 if (p == null) return;
                 _player = p.transform;
             }
+            if (_pc == null) _pc = _player.GetComponent<PlayerController2D>();
 
             if (Open != null)
             {
@@ -47,12 +48,20 @@ namespace SafeStreets
                 return;
             }
 
-            // Crossing NPCs take priority: SPACE near them starts their dialog
-            var crossNpc = FindCrossingNpc();
+            // --- ONE input router: priority = open popup > crossing NPC > talk NPC > building ---
+            var crossNpc = FindNearCrossingNpc();
             if (crossNpc != null)
             {
                 UpdateHint(crossNpc.transform, "Press SPACE to talk");
                 if (Input.GetKeyDown(KeyCode.Space)) crossNpc.Talk();
+                return;
+            }
+
+            var talkNpc = FindNearDialogNpc();
+            if (talkNpc != null)
+            {
+                UpdateHint(talkNpc.transform, "Press SPACE to talk");
+                if (Input.GetKeyDown(KeyCode.Space)) talkNpc.StartDialogue();
                 return;
             }
 
@@ -68,12 +77,34 @@ namespace SafeStreets
             }
         }
 
-        private SafeStreets.CrossingNPC FindCrossingNpc()
+        /// <summary>
+        /// Facing check fixed: uses the player's last MOVE direction (PlayerController2D.FaceDir),
+        /// not transform.up — the player never rotates (freezeRotation), so transform.up is
+        /// always world-up and the old check silently rejected approaches from the south.
+        /// </summary>
+        private bool PlayerFacing(Vector2 toTarget)
+        {
+            var face = _pc != null ? _pc.FaceDir : Vector2.down;
+            if (face.sqrMagnitude < 0.01f) face = Vector2.down;
+            return Vector2.Dot(face, toTarget.normalized) >= facingDot;
+        }
+
+        private PlayerController2D _pc;
+
+        private SafeStreets.CrossingNPC FindNearCrossingNpc()
         {
             foreach (var cnpc in FindObjectsByType<SafeStreets.CrossingNPC>(FindObjectsSortMode.None))
             {
-                var to = cnpc.transform.position - _player.position;
-                if (to.magnitude <= 2.2f) return cnpc;
+                if (Vector2.Distance(cnpc.transform.position, _player.position) <= 2.2f) return cnpc;
+            }
+            return null;
+        }
+
+        private SafeStreets.DialogNPC FindNearDialogNpc()
+        {
+            foreach (var npc in FindObjectsByType<SafeStreets.DialogNPC>(FindObjectsSortMode.None))
+            {
+                if (Vector2.Distance(npc.transform.position, _player.position) <= 2.2f) return npc;
             }
             return null;
         }
@@ -139,7 +170,7 @@ namespace SafeStreets
                 var to = closest - (Vector2)_player.position;
                 float dist = to.magnitude;
                 if (dist > range) continue;
-                if (dist > 0.05f && Vector2.Dot(_player.up, to.normalized) < facingDot) continue;
+                if (dist > 0.05f && !PlayerFacing(to)) continue;
                 if (dist < bestDist) { bestDist = dist; best = it; }
             }
             return best;

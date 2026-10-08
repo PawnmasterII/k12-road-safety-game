@@ -79,6 +79,12 @@ namespace SafeStreets.EditorTools
             MakeNpc(root, "Officer Ada", NpcAda, new Vector3(2.5f, 4f, 0f), ada);
             MakeNpc(root, "Granny Rose", NpcRose, new Vector3(-8f, -3.6f, 0f), rose, wantsCrossing: true);
             MakeNpc(root, "Little Sam", new Color(0.55f, 0.80f, 0.40f), new Vector3(8f, -3.6f, 0f), kid1, wantsCrossing: true);
+            // third friend so the 3-crossing quest is actually winnable
+            var mia = Conv("Mia",
+                "The LIBRARY is my favorite place. But I can't cross alone...",
+                "Will you walk me over the stripes?");
+            AssetDatabase.CreateAsset(mia, "Assets/Conv_Mia.asset");
+            MakeNpc(root, "Mia", new Color(0.90f, 0.62f, 0.35f), new Vector3(-2.5f, 3.2f, 0f), mia, wantsCrossing: true);
 
             // ---- Player: orange circle ----
             var player = new GameObject("Player");
@@ -116,7 +122,9 @@ namespace SafeStreets.EditorTools
             hudGo.transform.SetParent(root.transform);
             hudGo.transform.position = new Vector3(0f, 0f, 0f);
             hudGo.AddComponent<SafeStreets.HudAnchor>();
-            UnityEngine.Object.FindFirstObjectByType<SafeStreets.QuestManager>().RegisterHud(hud, quest);
+            var qm = SafeStreets.QuestManager.Find();
+            qm.RegisterHud(hud, quest);
+            SafeStreets.WinBanner.Create(root.transform, hud);   // self-subscribes at play start
 
             EditorSceneManager.SaveScene(scene, "Assets/Scenes/SafeStreets.unity");
             return $"geo scene built, roots={scene.rootCount}";
