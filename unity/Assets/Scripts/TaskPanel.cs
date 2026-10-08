@@ -28,7 +28,7 @@ namespace SafeStreets
             HasInitialized = true;
             IsClosing_ = false;
             InteractionManager.PauseForTask(true);
-            gameObject.SetActive(true);
+            PanelAnimator.Ensure(gameObject).FadeIn();   // R6: GGD-style fade-in
         }
 
         /// <summary>GGD CompleteAndClose: report success, close after the delay.</summary>
@@ -53,14 +53,18 @@ namespace SafeStreets
             _closeCo = StartCoroutine(CoClose(success, delay));
         }
 
-        /// <summary>GGD CoClose: short beat so the player sees the result, then close.</summary>
+        /// <summary>GGD CoClose: hold the result on screen for the delay, fade out,
+        /// then deactivate + resume movement.</summary>
         private System.Collections.IEnumerator CoClose(bool success, float delay)
         {
             yield return new WaitForSeconds(delay);
             _closeCo = null;
-            gameObject.SetActive(false);
-            InteractionManager.PauseForTask(false);
-            OnComplete?.Invoke(success);
+            var pa = PanelAnimator.Ensure(gameObject);
+            pa.FadeOut(() =>
+            {
+                InteractionManager.PauseForTask(false);
+                OnComplete?.Invoke(success);
+            });
         }
 
         protected virtual void OnDestroy()

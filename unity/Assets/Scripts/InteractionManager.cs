@@ -194,15 +194,19 @@ namespace SafeStreets
 
             _panelBody.text = "You are looking at " + it.label + ".\n\n(More content coming soon.)";
             _panel.SetActive(true);
+            PanelAnimator.Ensure(_panel).FadeIn();      // R6: GGD-style fade-in
             PositionPanel();
         }
 
         public void Close()
         {
             Open = null;
-            _panel.SetActive(false);
-            var pc = GameObject.FindWithTag("Player")?.GetComponent<PlayerController2D>();
-            if (pc != null) pc.Paused = false;
+            // R6 (GGD-style): fade out, then deactivate; resume movement when hidden
+            PanelAnimator.Ensure(_panel).FadeOut(() =>
+            {
+                var pc = GameObject.FindWithTag("Player")?.GetComponent<PlayerController2D>();
+                if (pc != null) pc.Paused = false;
+            });
         }
 
         /// <summary>
