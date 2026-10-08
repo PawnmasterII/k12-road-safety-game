@@ -103,6 +103,7 @@ namespace SafeStreets
             // ---- ring: cast rays, collect the vision polygon boundary ----
             var ring = new List<Vector3>(rays + 8);
             var ringDirs = new List<Vector2>(rays + 8);    // unit direction per ring vertex
+            var ringDists = new List<float>(rays + 8);     // distance from player per ring vertex
             Collider2D prevHit = null;
             int hinges = 0;
 
@@ -129,53 +130,54 @@ namespace SafeStreets
                 {
                     ring.Add(ring[ring.Count - 1]);            // hinge: bend at the corner
                     ringDirs.Add(ringDirs[ringDirs.Count - 1]);
+                    ringDists.Add(ringDists[ringDists.Count - 1]);
                     hinges++;
                 }
 
                 ring.Add(point);
                 ringDirs.Add(dir);
+                ringDists.Add(dist);
                 prevHit = hitCol;
             }
             LastHingeCount = hinges;
 
-            // ---- build the DARK COMPLEMENT: ring edges extruded far outward ----
-            // quad per segment: (a_i, a_j) ring edge -> (b_i, b_j) far edge.
-            // FAR=60 covers the whole map from anywhere on it (max half-diagonal ~24).
-            // R4: vertex-color gradient — ring vertices alpha 0 (vision edge, clear),
-            // far vertices full DimColor alpha (deep dark). Sprites/Default is
-            // vertex-color * additive, so this is THE transparency control.
+            // ---- build the DARK COMPLEMENT — R5 correctness fix ----
+            // R4 keyed alpha to DISTANCE FROM PLAYER: ring vertices hugging walls
+            // (2-5 units away) got alpha 0, so shadow pockets rendered LIT — the user
+            // saw "blocked zone still normal, only a border". Alpha must key off the
+            // VISION BOUNDARY, not the player: clear (0) at every ring vertex, full
+            // DimColor by EdgeWidth outward ALONG THE RAY, full to the map edge.
+            // Two quads per ring segment:
+            //   penumbra: a_i..a_j (ring, alpha 0) -> m_i..m_j (dist+EdgeWidth, full)
+            //   solid:    m_i..m_j (full)          -> f_i..f_j (FAR, full)
             const float FAR = 60f;
-            float edgeA = 0f;
-            float darkA = DimColor.a;
             int n = ring.Count;
-            var cols = new List<Color>(n * 2);
-            var verts = new List<Vector3>(n * 2);
-            var tris = new List<int>(n * 6);
+            var verts = new List<Vector3>(n * 6);
+            var cols = new List<Color>(n * 6);
+            var tris = new List<int>(n * 12);
+            var clear = DimColor; clear.a = 0f;
 
             for (int i = 0; i < n; i++)
             {
                 int j = (i + 1) % n;                            // wraps the ring closed
+                var a_i = ring[i];
+                var a_j = ring[j];
+                var m_i = center + ringDirs[i] * (ringDists[i] + EdgeWidth);
+                var m_j = center + ringDirs[j] * (ringDists[j] + EdgeWidth);
+                var f_i = center + ringDirs[i] * FAR;
+                var f_j = center + ringDirs[j] * FAR;
 
-                // per-vertex alpha: full darkness once past EdgeWidth, fading to 0 at the ring
-                float ai = AlphaFor(Vector2.Distance(ring[i], center));
-                float aj = AlphaFor(Vector2.Distance(ring[j], center));
-                var ci = DimColor; ci.a = ai;
-                var cj = DimColor; cj.a = aj;
-                var cb = DimColor;
+                // a_i, a_j, m_j, m_i, f_j, f_i
+                verts.Add(a_i); verts.Add(a_j); verts.Add(m_j); verts.Add(m_i); verts.Add(f_j); verts.Add(f_i);
+                cols.Add(clear); cols.Add(clear); cols.Add(DimColor); cols.Add(DimColor); cols.Add(DimColor); cols.Add(DimColor);
 
-                cols.Add(ci); cols.Add(cj);
-                verts.Add(ring[i]);
-                verts.Add(ring[j]);
-                var bi = center + ringDirs[i] * FAR;
-                var bj = center + ringDirs[j] * FAR;
-                cols.Add(cb); cols.Add(cb);
-                verts.Add(bj);
-                verts.Add(bi);
-
-                int v = i * 4;
-                // quad (a_i, a_j, b_j, b_i) as two triangles; Cull Off shader — winding safe
-                tris.Add(v);     tris.Add(v + 1); tris.Add(v + 2);   // a_i, a_j, b_j
-                tris.Add(v);     tris.Add(v + 2); tris.Add(v + 3);   // a_i, b_j, b_i
+                int v = i * 6;
+                // penumbra quad: a_i, a_j, m_j, m_i
+                tris.Add(v);     tris.Add(v + 1); tris.Add(v + 2);
+                tris.Add(v);     tris.Add(v + 2); tris.Add(v + 3);
+                // solid quad: m_i, m_j, f_j, f_i
+                tris.Add(v + 3); tris.Add(v + 2); tris.Add(v + 4);
+                tris.Add(v + 3); tris.Add(v + 4); tris.Add(v + 5);
             }
 
             _fogMesh.Clear();
@@ -200,9 +202,9 @@ namespace SafeStreets
         }
 
         /// <summary>
-        /// Darkness alpha at a distance from the player: 0 inside EdgeWidth of the
-        /// vision edge, ramping linearly to full DimColor alpha beyond it. This is
-        /// the penumbra band that kills the "choppy hard cut".
+        /// Darkness alpha at a distance from the player. (R5: no longer used by the
+        /// mesh — alpha now keys off the vision boundary via the two-quad extrusion.
+        /// Kept for external callers/debug.)
         /// </summary>
         private float AlphaFor(float distFromCenter)
         {
