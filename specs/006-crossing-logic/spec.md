@@ -100,3 +100,21 @@ R2 regression battery (play mode, console 0 errors): geometry + horizontal strip
 jaywalk-drag -> toast, no modal, helped unchanged; cooldown guard proven both directions;
 S->N and N->S traversals score (helped 1 then 2); solo-cross + quiz-visit both hold
 (NPC frozen at 8.9u while quiz owned input, no credit).
+
+## R3 fix (2026-10-12, user-reported: loop persists on re-talk after failed crossing)
+
+Root cause found: after an on-road abandon the NPC stayed stranded ON the road (side 0);
+Talk() gated the escort on `_startSide != 0`, so the escort SILENTLY NEVER STARTED and
+every SPACE re-ran the full intro dialog — a different loop than R2's, same symptom.
+
+Fix (three parts, all verified live):
+1. Escort ALWAYS starts; `_startSide == 0` means "undetermined" and is captured the first
+   time the NPC reaches a shoulder mid-escort (mid-road re-talks work).
+2. An abandon while on-road makes the NPC flee to the nearest shoulder (never stranded in
+   traffic; next re-talk always starts sane).
+3. Retry talks use a one-line "Let's try again" instead of the full intro.
+
+Verified: fail-on-road -> toast -> flee to shoulder (y 0.5->3.0) -> re-talk opens one-line
+dialog -> Escorting startSide=-1 -> full traversal completes (helped=1); mid-road re-talk
+arms Escorting with startSide=0 -> auto-arms -1 when following player off the road;
+quiz-visit regression holds (helped unchanged, NPC held 8.9u); console 0 errors.

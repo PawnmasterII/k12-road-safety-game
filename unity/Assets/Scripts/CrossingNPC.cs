@@ -49,6 +49,18 @@ namespace SafeStreets
         private TextMesh _toast;
         private float _toastUntil;
 
+        // ---- Spec 006 R3: the re-talk loop ----
+        // After an abandon the NPC could be stranded ON the road (side 0); Talk()
+        // gated the escort on _startSide != 0, so the escort silently never started
+        // and every SPACE re-ran the intro dialog — the "infinite dialog loop".
+        // Fixes: (1) escort always starts; startSide==0 means "undetermined" and is
+        // captured the first time the NPC reaches a shoulder; (2) an abandon while
+        // on-road makes the NPC flee to the nearest shoulder (never stranded in
+        // traffic, next re-talk always starts sane); (3) retries use a one-liner.
+        private bool _fleeing;
+        private Conversation _retry;
+        private bool _attempted;
+
         private void Awake()
         {
             _intro = ScriptableObject.CreateInstance<Conversation>();
@@ -72,7 +84,6 @@ namespace SafeStreets
                 Destroy(_toast.gameObject);
                 _toast = null;
             }
-            if (_state != EscortState.Escorting) return;
             if (_player == null)
             {
                 var p = GameObject.FindWithTag("Player");
@@ -80,9 +91,33 @@ namespace SafeStreets
                 _player = p.transform;
             }
 
+            // R3: fleeing to the shoulder after an on-road abandon. No leash, no
+            // rules — just get off the road, then resume glue-follow.
+            if (_fleeing)
+            {
+                if (IsModalOpen()) return;
+                int side = CrossingZone.SideOf(transform.position);
+                if (side != 0) { _fleeing = false; return; }
+                float dirY = transform.position.y >= 0f ? 1f : -1f;
+                transform.position = Vector3.MoveTowards(transform.position,
+                    new Vector3(transform.position.x, dirY * 4f, transform.position.z),
+                    3f * Time.deltaTime);
+                return;
+            }
+
+            if (_state != EscortState.Escorting) return;
+
             // A modal (quiz/dialog/minigame) owns input — the escort holds still and
             // judges nothing while it is open (so quiz visits can't complete crossings).
             if (IsModalOpen()) return;
+
+            // R3: startSide 0 = not yet on a shoulder — capture it the first time
+            // the NPC reaches one (this also makes mid-road re-talks work).
+            if (_startSide == 0)
+            {
+                int s = CrossingZone.SideOf(transform.position);
+                if (s != 0) _startSide = s;
+            }
 
             // 1. Leash: player wandered off.
             if (Vector2.Distance(transform.position, _player.position) > leashDistance)
@@ -92,10 +127,11 @@ namespace SafeStreets
             }
 
             // 2. Corridor containment: while ON the road, the NPC must be within the
-            //    painted stripes' x-range. Dragging along/at the road anywhere else
-            //    is jaywalking — abandon.
+            //    painted stripes. Only enforced once we know the starting side —
+            //    a mid-road escort start walks to the nearest shoulder (flee) or
+            //    into the corridor freely until a side is established.
             var zone = CrossingZone.Instance;
-            if (zone != null && Mathf.Abs(transform.position.y) <= zone.roadHalfY)
+            if (zone != null && _startSide != 0 && Mathf.Abs(transform.position.y) <= zone.roadHalfY)
             {
                 var c = zone.corridor;
                 if (transform.position.x < c.xMin || transform.position.x > c.xMax)
@@ -107,7 +143,7 @@ namespace SafeStreets
 
             // 3. Completion: NPC reached the opposite shoulder...
             int npcSide = zone != null ? CrossingZone.SideOf(transform.position) : 0;
-            if (npcSide != 0 && npcSide == -_startSide)
+            if (_startSide != 0 && npcSide != 0 && npcSide == -_startSide)
             {
                 // ...and the player came too — same opposite shoulder, within radius.
                 int playerSide = CrossingZone.SideOf(_player.position);
@@ -140,11 +176,14 @@ namespace SafeStreets
         /// Non-blocking abandon: floating toast above the NPC (auto-expires), escort
         /// resets, player is NEVER frozen. A re-talk within RetalkCooldown is refused,
         /// which breaks the intro->abandon->intro dialog loop. No dialogs involved.
+        /// R3: if the NPC is stranded ON the road, she flees to the nearest shoulder
+        /// first — the next talk always starts from sane footing.
         /// </summary>
         private void Abandon(string reason)
         {
             _state = EscortState.None;
             _startSide = 0;
+            _fleeing = CrossingZone.SideOf(transform.position) == 0;
             _cooldownUntil = Time.time + RetalkCooldown;
             ShowToast(reason);
         }
@@ -180,11 +219,24 @@ namespace SafeStreets
             if (Time.time < _cooldownUntil) return;   // breaks the abandon->intro dialog loop
             if (DialogManager.Instance.IsOpen) return;
 
-            DialogManager.Instance.StartDialog(_intro, gameObject, () =>
+            // R3: retries get a one-liner, not the full intro (no dialog marathon).
+            // _attempted flips true after the first escort attempt.
+            if (_attempted && _retry == null)
+            {
+                _retry = ScriptableObject.CreateInstance<Conversation>();
+                _retry.speakerName = npcName;
+                _retry.lines = new[] { "Okay, let's try again - stripes, together!" };
+            }
+            var conv = _attempted ? _retry : _intro;
+            _attempted = true;
+
+            DialogManager.Instance.StartDialog(conv, gameObject, () =>
             {
                 _player = GameObject.FindWithTag("Player")?.transform;
-                _startSide = CrossingZone.SideOf(transform.position);   // record where the pair starts
-                _state = _startSide != 0 ? EscortState.Escorting : EscortState.None;
+                // R3: escort ALWAYS starts. Side 0 (stranded mid-road) = "undetermined";
+                // it is captured the first time the NPC reaches a shoulder in Update.
+                _startSide = CrossingZone.SideOf(transform.position);
+                _state = EscortState.Escorting;
             });
         }
 
