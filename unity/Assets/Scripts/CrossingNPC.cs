@@ -38,6 +38,17 @@ namespace SafeStreets
         private int _startSide;          // +1 north, -1 south (CrossingZone.SideOf at escort start)
         private Transform _player;
 
+        // ---- Spec 006 R2: abandons are NON-BLOCKING toasts, not modal dialogs ----
+        // The old Abandon() opened a full dialog (freezes player, SPACE to clear);
+        // retrying immediately re-ran the intro dialog -> abandon -> intro -> ...
+        // infinite dialog loop. Now: floating toast over the NPC + a short re-talk
+        // cooldown, player never frozen, no dialog chain.
+        private const float ToastSeconds = 2.2f;
+        private const float RetalkCooldown = 3f;
+        private float _cooldownUntil;
+        private TextMesh _toast;
+        private float _toastUntil;
+
         private void Awake()
         {
             _intro = ScriptableObject.CreateInstance<Conversation>();
@@ -56,6 +67,11 @@ namespace SafeStreets
 
         private void Update()
         {
+            if (_toast != null && Time.time > _toastUntil)
+            {
+                Destroy(_toast.gameObject);
+                _toast = null;
+            }
             if (_state != EscortState.Escorting) return;
             if (_player == null)
             {
@@ -120,19 +136,34 @@ namespace SafeStreets
             return false;
         }
 
-        /// <summary>One-shot spoken reason, no pause, escort resets so the player can retry.</summary>
+        /// <summary>
+        /// Non-blocking abandon: floating toast above the NPC (auto-expires), escort
+        /// resets, player is NEVER frozen. A re-talk within RetalkCooldown is refused,
+        /// which breaks the intro->abandon->intro dialog loop. No dialogs involved.
+        /// </summary>
         private void Abandon(string reason)
         {
             _state = EscortState.None;
             _startSide = 0;
-            var dm = DialogManager.Instance;
-            if (dm != null && !dm.IsOpen)
+            _cooldownUntil = Time.time + RetalkCooldown;
+            ShowToast(reason);
+        }
+
+        /// <summary>Small world-space text above the NPC; expires on its own (no input).</summary>
+        private void ShowToast(string text)
+        {
+            if (_toast == null)
             {
-                var line = ScriptableObject.CreateInstance<Conversation>();
-                line.speakerName = npcName;
-                line.lines = new[] { reason };
-                dm.StartDialog(line, gameObject);
+                var go = new GameObject(npcName + "_Toast");
+                go.transform.SetParent(transform);
+                go.transform.localPosition = new Vector3(0f, 0.85f, -3f);
+                _toast = go.AddComponent<TextMesh>();
+                DialogStyle.Style(_toast, 0.11f, 26, TextAnchor.MiddleCenter,
+                    new Color(1f, 0.62f, 0.35f), 30);
             }
+            _toast.text = text;
+            _toast.gameObject.SetActive(true);
+            _toastUntil = Time.time + ToastSeconds;
         }
 
         /// <summary>
@@ -146,6 +177,7 @@ namespace SafeStreets
         public void Talk()
         {
             if (_state != EscortState.None) return;
+            if (Time.time < _cooldownUntil) return;   // breaks the abandon->intro dialog loop
             if (DialogManager.Instance.IsOpen) return;
 
             DialogManager.Instance.StartDialog(_intro, gameObject, () =>

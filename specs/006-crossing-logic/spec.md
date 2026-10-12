@@ -1,6 +1,6 @@
 # Spec 006 — Crossing Detection Rework (traversal event, not co-location)
 
-Status: PLANNED (design formed 2026-10-12; no code yet)
+Status: IMPLEMENTED + R2 fixes verified 2026-10-12. See Verification log + R2 log below.
 Scope: CrossingNPC.cs (mostly), small SceneGeo.cs addition. No changes to QuestManager/QuizManager.
 
 ## Judgment of current logic (CrossingNPC.InZebraZone + co-presence check)
@@ -87,3 +87,16 @@ before showing _thanks (defers instead of stacking; closes J2's modal-stack half
   stripes (hook for WS-C chime later).
 - NPC follow through walls (MoveTowards glue) -> NavMeshAgent/RB steering is a bigger change;
   out of scope unless asked.
+
+## R2 fixes (2026-10-12, user-reported)
+
+| # | Report | Root cause | Fix | Verified |
+|---|--------|-----------|-----|----------|
+| R2.1 | Infinite dialog loop when not stepping on stripes | Abandon() opened a MODAL dialog (freezes player, SPACE to clear); each failed attempt re-armed Talk() -> intro -> abandon -> intro ... | Abandon is now a non-blocking floating toast (2.2s, auto-expires, player never frozen) + 3s re-talk cooldown; instant re-talk provably refused (duringCooldown=False, afterCooldown=True) | PASS |
+| R2.2 | Hitbox/visual inconsistency | Corridor was the stripe-union AABB (solid 7.9x5.2 box incl. bare-asphalt gaps between vertical bars) | Stripes reoriented so painted band == corridor: 6 horizontal rungs 7.9x0.7 at y=-2.65+i*1.06 cover y[-3,3]; corridor=[-3.95,-3..3.95,3] exactly | PASS |
+| R2.3 | Stripes wrong direction for the road | Bars ran parallel to the pedestrian path (vertical ladder); real zebra rungs run parallel to TRAFFIC, stacked across the road | Ladder orientation: rungs long in x (7.9, parallel to the 40x6 road), stacked in y across the road | PASS (6/6 rungs horizontal asserted live) |
+
+R2 regression battery (play mode, console 0 errors): geometry + horizontal stripes asserted;
+jaywalk-drag -> toast, no modal, helped unchanged; cooldown guard proven both directions;
+S->N and N->S traversals score (helped 1 then 2); solo-cross + quiz-visit both hold
+(NPC frozen at 8.9u while quiz owned input, no credit).

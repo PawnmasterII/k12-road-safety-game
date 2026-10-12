@@ -43,10 +43,12 @@ namespace SafeStreets.EditorTools
             var road = Shape(root, "Road", RoadCol, new Vector3(0, 0, -1), new Vector2(40, 6));
             road.GetComponent<SpriteRenderer>().sortingOrder = -8;
 
-            // ---- Zebra stripes ----
-            for (int i = 0; i < 7; i++)
+            // ---- Zebra stripes (spec 006 R2: ladder orientation — rungs run parallel
+            //      to traffic (long in x), stacked across the road; the painted band now
+            //      equals the corridor hitbox exactly) ----
+            for (int i = 0; i < 6; i++)
             {
-                var z = Shape(root, $"Zebra{i}", ZebraCol, new Vector3(-3.6f + i * 1.2f, 0f, -2), new Vector2(0.7f, 5.2f));
+                var z = Shape(root, $"Zebra{i}", ZebraCol, new Vector3(0f, -2.65f + i * 1.06f, -2), new Vector2(7.9f, 0.7f));
                 z.GetComponent<SpriteRenderer>().sortingOrder = -4;
             }
 
@@ -57,7 +59,7 @@ namespace SafeStreets.EditorTools
             czGo.transform.position = new Vector3(0f, 0f, -3f);
             var czCol = czGo.AddComponent<BoxCollider2D>();
             czCol.isTrigger = true;
-            czCol.size = new Vector2(6 * 1.2f + 0.7f, 5.2f);   // 7 stripes at 1.2 pitch, 0.7 wide → x span 7.9
+            czCol.size = new Vector2(7.9f, 6f);   // painted band = road height band across x 7.9
             czGo.AddComponent<SafeStreets.CrossingZone>();
 
             // ---- Buildings: gray boxes with labels (interactable) ----
