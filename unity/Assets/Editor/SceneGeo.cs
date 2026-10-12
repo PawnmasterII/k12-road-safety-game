@@ -50,6 +50,16 @@ namespace SafeStreets.EditorTools
                 z.GetComponent<SpriteRenderer>().sortingOrder = -4;
             }
 
+            // ---- Spec 006: crossing corridor authority (one logic object over the stripes;
+            //      CrossingZone recomputes its corridor from the Zebra* sprites itself) ----
+            var czGo = new GameObject("CrossingZone");
+            czGo.transform.SetParent(root.transform);
+            czGo.transform.position = new Vector3(0f, 0f, -3f);
+            var czCol = czGo.AddComponent<BoxCollider2D>();
+            czCol.isTrigger = true;
+            czCol.size = new Vector2(6 * 1.2f + 0.7f, 5.2f);   // 7 stripes at 1.2 pitch, 0.7 wide → x span 7.9
+            czGo.AddComponent<SafeStreets.CrossingZone>();
+
             // ---- Buildings: gray boxes with labels (interactable) ----
             MakeBuilding(root, "SCHOOL", new Vector2(-11, 8), new Vector2(9, 4), "the school");
             MakeBuilding(root, "HOME", new Vector2(11, -8), new Vector2(8, 4), "your home");

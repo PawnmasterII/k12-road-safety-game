@@ -15,7 +15,7 @@
 cd unity
 unity status                       # Editor must be open + "ready" (port 7800)
 unity recompile --project-path .   # after editing .cs files; empty output = clean
-unity command eval 'return SafeStreets.EditorTools.SceneBuilder2D.Build();' --project-path .
+unity command eval 'return SafeStreets.EditorTools.SceneGeo.Build();' --project-path .
 unity command editor_play / editor_stop / editor_focus --project-path .
 unity command console_status --project-path .   # groundTruth.consoleErrors is the truth
 unity command get_scene_hierarchy --project-path .
@@ -50,23 +50,21 @@ unity command get_scene_hierarchy --project-path .
   eval-specific flags after a `--` fence.
 - **`unity status --until-ready`** instead of sleep-loops after editor_play (domain reload
   drops the pipeline listener briefly).
+- Verification standard (standing rule, session 3): visual/rendering claims need
+  `capture_game_view` → PNG → pixel-color analysis. Transform probes are NOT proof of rendering.
 - Command names differ between pipeline versions — confirm with `unity command --query <name> --format json`
   which also returns each command's full parameter schema.
 
-## KNOWN ISSUES — status after session 2
+## KNOWN ISSUES — status after session 6 (2026-10-12)
 
-1. ~~Character invisible~~ **FIXED (session 3, PROVEN WITH PIXELS).** TWO stacked bugs:
-   a. Session-2 fixes (real PNG sprite assets + FullRect mesh) were necessary but NOT sufficient.
-   b. **The final bug was CameraFollow2D:** `want.z = offset.z` clamped the camera's z to the
-      player's z — an ortho camera can't render objects lying on its own plane. Player always at
-      camera distance 0.0. Fix: remove the clamp, let offset's z (-10) do the pull-back.
-   Verification standard from now on: capture_game_view → PNG → pixel-color analysis
-   (460 orange px found at screen center = kid visible). Transform probes are NOT proof of rendering.
-2. ~~Nothing to interact with~~ **FIXED:** 5 walk-in quiz zones (glowing outlines): zebra (5 questions,
-   maps to backend `le-crossing`), school (2), park (2), home (2), shop (2). Walk in → card opens,
-   player pauses, click answers, feedback with source citation, completion closes card.
-   Verified end-to-end in play mode via CLI-driven clicks.
-3. Player spawn resets to (0, -3.7) on every `Build()` call.
+1. ~~Crossing detection was co-location, not traversal~~ **FIXED (session 6, spec 006,
+   all 6 scenarios play-mode-verified).** New logic: side-of-ROAD tracking (shoulder y>3 /
+   y<-3, NOT the stripes), corridor containment from CrossingZone (stripe-union AABB, no
+   0.3 phantom margin), opposite-shoulder + player-within-2.5 completion, leash (6),
+   modal gating, directional exit, deferred thank-you. See specs/006-crossing-logic/.
+   Same-side in/out, quiz-visit, jaywalk-drag, and solo-crossing all now score NOTHING.
+2. Player spawn resets to (0, -3.7) on every `Build()` call.
+   (still open — spec 005 WS-D)
 
 ## NEW GOTCHAS (session 2)
 
@@ -81,6 +79,14 @@ unity command get_scene_hierarchy --project-path .
 - Quiz answer flow has a 2.2s feedback pause; drive clicks ≥2.5s apart when testing via CLI.
 
 ## NEXT MILESTONES (in order)
+
+0. **Game Quality Pass — spec 005 (2026-10-12)**: `specs/005-game-quality-pass/` (spec.md +
+   tasks.md). Skill-driven audit findings: mixed texture filtering (28 bilinear / 12 point),
+   zero audio (0 clips/sources/listener/mixer), all text = legacy TextMesh (no TMP, no Canvas),
+   `_Recovery/0.unity` artifact, Build() spawn reset. Workstreams: A texture policy, B TMP
+   migration (one manager per commit), C audio from zero (optimize-audio rules: findings
+   reported + approval BEFORE imports), D hygiene. Two items deliberately deferred awaiting
+   user call: stray-keyboard input gating (session-5 defect) and the 8 WIP files' commit intent.
 
 1. ~~Fix visibility (sprites above) + reset player spawn~~ **DONE.**
 2. ~~Interactables~~ **DONE (all 5 zones).**
