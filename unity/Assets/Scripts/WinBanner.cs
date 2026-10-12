@@ -38,6 +38,19 @@ namespace SafeStreets
 
         public void OnQuestComplete()
         {
+            // R7: dismiss anything that was open when the win fired — post-win
+            // input is terminal, so an open task/quiz/dialog/popup could never
+            // close itself and would squat on the banner forever (this session's
+            // stuck bug: the SCHOOL task panel was open at the 3rd crossing).
+            var im = InteractionManager.Instance;
+            if (im != null && im.Open != null) im.Close();
+            var quiz = QuizManager.Instance;
+            if (quiz != null && quiz.IsOpen) quiz.Close(false);
+            var dlg = DialogManager.Instance;
+            if (dlg != null && dlg.IsOpen) dlg.Close();
+            foreach (var tp in FindObjectsByType<TaskPanel>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
+                if (tp.gameObject.activeInHierarchy) tp.FailAndClose();
+
             if (_hud != null)
             {
                 _hud.text = "YOU DID IT!\nAll friends crossed safely!";

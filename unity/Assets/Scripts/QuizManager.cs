@@ -261,6 +261,7 @@ namespace SafeStreets
                 // unpause under it.
                 if (DialogManager.Instance != null && DialogManager.Instance.IsOpen) return;
                 if (InteractionManager.TaskPaused) return;
+                if (InteractionManager.QuestWon) return;   // R7: the win-freeze owns the player
                 var player = GameObject.FindWithTag("Player");
                 if (player != null) player.GetComponent<PlayerController2D>().Paused = false;
             });

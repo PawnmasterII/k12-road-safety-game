@@ -94,6 +94,7 @@ namespace SafeStreets
 
         public void Close()
         {
+            if (!IsOpen) return;   // re-entrancy guard (R7: win-banner may close an already-closing dialog)
             ModalInputGate.SwallowSpacePress();   // R4: the closing press must not re-route
             IsOpen = false;
             Source = null;
@@ -103,6 +104,7 @@ namespace SafeStreets
             PanelAnimator.Ensure(_panel).FadeOut(() =>
             {
                 if (IsOpen) return;   // a newer modal owns the player now
+                if (InteractionManager.QuestWon) return;   // R7: the win-freeze owns the player
                 var player = GameObject.FindWithTag("Player");
                 if (player != null) player.GetComponent<PlayerController2D>().Paused = false;
             });
