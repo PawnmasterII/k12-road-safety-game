@@ -3,18 +3,22 @@ using UnityEngine;
 namespace SafeStreets
 {
     /// <summary>
-    /// Spec 006 R4 — the "never again" procedure for modal-input races.
+    /// Spec 006 R4/R5 — the "never again" procedure for the modal-input bug class:
+    /// one physical input (or one stale async callback) consumed by the wrong
+    /// consumer because Update() order between scripts is undefined.
     ///
-    /// One frame-based swallow window: the SPACE keypress that CLOSED a modal must
-    /// never also open/advance the next thing in the same or the next frame.
-    /// Without this, Update() order between DialogManager and InteractionManager is
-    /// undefined, so "advance + close" then "route the same still-down keypress"
-    /// produced the infinite dialog loop on Officer Ada (quiz zones and interaction
-    /// popups carried the same latent race).
-    ///
-    /// THE RULE (add to any new modal or input consumer):
-    ///   1. Every code path that CLOSES a modal calls SwallowSpacePress().
-    ///   2. Every Update that polls Input.GetKeyDown(Space) checks SpaceBlocked first.
+    /// THE RULES (add to any new modal or input consumer):
+    ///   1. Every code path that OPENS or CLOSES a modal calls SwallowSpacePress().
+    ///   2. Every Update that polls Input checks ModalInputGate.InputAllowed first.
+    ///   3. Openers (StartDialog/StartQuiz/...) REFUSE while blocked — the choke
+    ///      point covers every caller: router, direct calls, walk-in triggers.
+    ///   4. (R5) Any resume-movement callback passed to a FadeOut must validate the
+    ///      modal is STILL closed (`!IsOpen` / `Open == null`) before unpausing —
+    ///      a new modal may have opened during the 0.16s fade.
+    ///   5. (R5) In the Editor, ALL input is dead while the window is unfocused —
+    ///      stray physical keypresses must never drive play mode (session-5 defect).
+    /// Run SafeStreets.EditorTools.ModalSafetyAudit.Run() (Tools > Modal Safety
+    /// Audit) — it FAILS on any script that polls Input without the gate.
     /// </summary>
     public static class ModalInputGate
     {
@@ -23,7 +27,15 @@ namespace SafeStreets
         /// <summary>True while SPACE polls must be ignored (close frame + the frame after).</summary>
         public static bool SpaceBlocked => Time.frameCount <= _swallowUntilFrame;
 
-        /// <summary>Call from every modal Close() path.</summary>
+        /// <summary>
+        /// R5: the ONE check every input poller uses. False while a swallow window is
+        /// active, and (Editor only) while the Editor window is unfocused — stray
+        /// physical keypresses must never drive the game.
+        /// </summary>
+        public static bool InputAllowed =>
+            !SpaceBlocked && (!Application.isEditor || Application.isFocused);
+
+        /// <summary>Call from every modal open/close path.</summary>
         public static void SwallowSpacePress() => _swallowUntilFrame = Time.frameCount + 1;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]

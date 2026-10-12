@@ -143,3 +143,32 @@ InteractionManager (Update router, OpenUp, popup Close).
 Verified live: same-frame close->reopen = False (loop dead); reopen on a LATER frame =
 True (no over-blocking), dialog still completes; escort-after-dialog works; quiz opens,
 answers, abandons cleanly; console 0 errors throughout.
+
+## R5 — class-wide audit + prevention layer (2026-10-12, "all bugs of this nature, never again")
+
+Audit of the whole bug class ("one event consumed by the wrong consumer due to undefined
+Update() order / unvalidated async callbacks") found THREE sub-classes:
+
+| # | Sub-class | Status before R5 |
+|---|-----------|------------------|
+| S1 | Input race: same keypress routed twice (script-order lottery) | fixed in R4 for SPACE; other inputs unaudited |
+| S2 | Stale async resume: fade-out callbacks unpaused the player unconditionally 0.16s after Close — a modal opened during the fade got un-paused UNDER (live bug, reproducible) | BUG, every panel |
+| S3 | Unfocused-Editor stray keys: real keypresses/clicks reached play mode while the window was unfocused (session-5 deferred defect) | BUG, all pollers |
+
+Prevention layer (all in this commit):
+- `ModalInputGate.InputAllowed` = not swallow-blocked AND (not editor OR window focused).
+  All 4 input-polling scripts now gate on it (Dialog, Quiz, Interaction routers; DragDrop
+  mouse with a mid-swing release guard). PlayerController axes exempt by design: continuous
+  movement input is gated at the consumer (Paused), documented in the audit.
+- State-validated resume callbacks: DialogManager, InteractionManager, QuizManager only
+  restore movement if no NEWER modal owns the player (`!IsOpen` / `Open == null` /
+  `!TaskPaused`).
+- `ModalSafetyAudit.Run()` (Tools > Modal Safety Audit, or CLI eval) — executable rule:
+  FAILS on any script that polls UnityEngine.Input without referencing ModalInputGate.
+  First run caught DragDropTask (real catch, now fixed). Wire into CI via the eval.
+
+Proofs (live play mode, console 0): race re-probe reopen=False; stale-callback repro —
+D2 opened mid-fade of D1, D1's callback fired later, player STAYED paused under D2
+(old code: un-paused); D2's own close restored movement; DragDrop gated; escort/quiz
+regressions hold; audit PASS 4/4. Session-5 stray-keypress defect (deferred D1) is now
+CLOSED by the focus guard.
