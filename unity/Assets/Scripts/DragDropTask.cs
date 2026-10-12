@@ -177,6 +177,12 @@ namespace SafeStreets
             // drag handling (mouse); depth = camera plane offset so world z stays 0.
             // R6 (GGD GamepadCursor port): the TILE follows the pointer with a lerp,
             // not a hard snap — removes the jittery feel on drag.
+            // R5: gated — stray clicks / stale swallows must never grab or drop tiles.
+            if (!ModalInputGate.InputAllowed)
+            {
+                if (_dragging && Input.GetMouseButtonUp(0)) DropTile(_dragTile);   // never stick mid-swing
+                return;
+            }
             var cam = Camera.main;
             if (cam == null) return;
             var mouseWorld = cam.ScreenToWorldPoint(

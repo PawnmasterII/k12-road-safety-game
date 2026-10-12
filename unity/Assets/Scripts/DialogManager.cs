@@ -97,9 +97,12 @@ namespace SafeStreets
             ModalInputGate.SwallowSpacePress();   // R4: the closing press must not re-route
             IsOpen = false;
             Source = null;
-            // R6 (GGD-style): fade out, then deactivate; resume movement when hidden
+            // R6 (GGD-style): fade out, then deactivate; resume movement when hidden.
+            // R5: state-validated resume — if ANOTHER dialog opened during the fade,
+            // this stale callback must NOT unpause the player under it.
             PanelAnimator.Ensure(_panel).FadeOut(() =>
             {
+                if (IsOpen) return;   // a newer modal owns the player now
                 var player = GameObject.FindWithTag("Player");
                 if (player != null) player.GetComponent<PlayerController2D>().Paused = false;
             });
@@ -156,7 +159,7 @@ namespace SafeStreets
         private void Update()
         {
             if (!IsOpen) return;
-            if (ModalInputGate.SpaceBlocked) return;   // R4: opening/closing press is consumed
+            if (!ModalInputGate.InputAllowed) return;   // R4/R5: swallowed press OR unfocused editor
             if (Input.GetKeyDown(KeyCode.Space)) Advance();
         }
 

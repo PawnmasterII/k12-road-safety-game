@@ -256,8 +256,13 @@ namespace SafeStreets
             var pa = PanelAnimator.Ensure(_panel);
             pa.FadeOut(() =>
             {
-                var pc = GameObject.FindWithTag("Player")?.GetComponent<PlayerController2D>();
-                if (pc != null) pc.Paused = false;
+                // R5: state-validated resume — a newer dialog or task panel opened
+                // during the fade owns the player; this stale callback must not
+                // unpause under it.
+                if (DialogManager.Instance != null && DialogManager.Instance.IsOpen) return;
+                if (InteractionManager.TaskPaused) return;
+                var player = GameObject.FindWithTag("Player");
+                if (player != null) player.GetComponent<PlayerController2D>().Paused = false;
             });
             if (!completed && !_finished && _bank != null)
                 Debug.Log($"[Quiz] abandoned activity={_bank.activityId}");
@@ -270,7 +275,7 @@ namespace SafeStreets
         private void Update()
         {
             if (!IsOpen) return;
-            if (ModalInputGate.SpaceBlocked) return;   // R4: opening/closing press is consumed
+            if (!ModalInputGate.InputAllowed) return;   // R4/R5: swallowed press OR unfocused editor
             if (Input.GetKeyDown(KeyCode.Escape)) { Close(false); return; }
             if (_locked) return;
             if (_finished)

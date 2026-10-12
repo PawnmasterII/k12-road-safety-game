@@ -69,9 +69,9 @@ namespace SafeStreets
             }
             if (_pc == null) _pc = _player.GetComponent<PlayerController2D>();
 
-            // R4: SPACE swallowed by a modal that closed this frame/last frame —
-            // the same physical press must not re-open what just closed.
-            if (ModalInputGate.SpaceBlocked) return;
+            // R4/R5: SPACE swallowed by a modal that closed this frame/last frame, or
+            // the Editor window is unfocused — stray physical keys never drive the game.
+            if (!ModalInputGate.InputAllowed) return;
 
             // Feature 002: an open quiz (or dialog) owns input — nothing else routes
             // Spec 004: an open minigame owns input first of all
@@ -221,9 +221,12 @@ namespace SafeStreets
         {
             Open = null;
             ModalInputGate.SwallowSpacePress();   // R4: the closing press must not re-route
-            // R6 (GGD-style): fade out, then deactivate; resume movement when hidden
+            // R6 (GGD-style): fade out, then deactivate; resume movement when hidden.
+            // R5: state-validated resume — a newer popup/modal opened during the fade
+            // owns the player; this stale callback must not unpause under it.
             PanelAnimator.Ensure(_panel).FadeOut(() =>
             {
+                if (Open != null) return;   // a newer modal owns the player now
                 var pc = GameObject.FindWithTag("Player")?.GetComponent<PlayerController2D>();
                 if (pc != null) pc.Paused = false;
             });
