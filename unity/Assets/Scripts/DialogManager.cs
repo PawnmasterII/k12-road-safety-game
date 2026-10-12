@@ -17,6 +17,7 @@ namespace SafeStreets
 
         private Conversation _conversation;
         private int _line;
+        private bool _showingTip;
         private GameObject _panel;
         private TextMesh _nameMesh;
         private TextMesh _bodyMesh;
@@ -33,9 +34,10 @@ namespace SafeStreets
         {
             _panel = new GameObject("DialogPanel");
 
-            // backdrop from the pack's DialogBox sprite (930x... scaled), tinted dark
+            // backdrop tinted dark (white-texture sprite @ PPU 16).
+            // (Removed a dead Resources.Load<Sprite>("") — empty path can only
+            // return null/log an error; the created sprite below is what shows.)
             _backdrop = _panel.AddComponent<SpriteRenderer>();
-            var box = Resources.Load<Sprite>("");
             _backdrop.sprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 16f);
             _backdrop.color = new Color(0.08f, 0.12f, 0.19f, 0.97f);
             _backdrop.drawMode = SpriteDrawMode.Sliced;
@@ -70,10 +72,15 @@ namespace SafeStreets
         public void StartDialog(Conversation conversation, GameObject source, System.Action onDone)
         {
             if (conversation == null || conversation.lines == null || conversation.lines.Length == 0) return;
+            // R4 choke point: refuse to OPEN while a swallow window is active — no
+            // caller (router, direct, trigger) can reopen what a press just closed.
+            if (ModalInputGate.SpaceBlocked) return;
+            ModalInputGate.SwallowSpacePress();   // R4: the opening press must not double-advance
             _conversation = conversation;
             Source = source;
             _onDone = onDone;
             _line = 0;
+            _showingTip = false;
             IsOpen = true;
 
             var player = GameObject.FindWithTag("Player");
@@ -87,6 +94,7 @@ namespace SafeStreets
 
         public void Close()
         {
+            ModalInputGate.SwallowSpacePress();   // R4: the closing press must not re-route
             IsOpen = false;
             Source = null;
             // R6 (GGD-style): fade out, then deactivate; resume movement when hidden
@@ -109,9 +117,10 @@ namespace SafeStreets
                 _nameMesh.text = line.Substring(2);
                 _line++;
                 if (_line >= _conversation.lines.Length) { Close(); return; }
-                line = _conversation.lines[_line];
+                _bodyMesh.text = _conversation.lines[_line];
+                return;
             }
-            else if (_line == 0)
+            if (_line == 0)
             {
                 _nameMesh.text = _conversation.speakerName;
             }
@@ -121,14 +130,22 @@ namespace SafeStreets
         public void Advance()
         {
             if (!IsOpen) return;
+            // TIP screen consumes one SPACE press before the dialog closes —
+            // previously the tip was set and Close() ran in the same call, so
+            // the "closing safety tip" could never actually be read.
+            if (_showingTip) { Close(); return; }
             _line++;
             if (_line >= _conversation.lines.Length)
             {
+                // Show as RUNTIME state, never written back onto the asset:
+                // Conversation assets are shared, so nulling closingTip there
+                // erased the tip for every future play session.
                 if (!string.IsNullOrEmpty(_conversation.closingTip))
                 {
+                    _showingTip = true;
                     _nameMesh.text = "TIP";
                     _bodyMesh.text = _conversation.closingTip;
-                    _conversation.closingTip = null;   // shown once per conversation asset instance
+                    return;
                 }
                 Close();
                 return;
@@ -139,6 +156,7 @@ namespace SafeStreets
         private void Update()
         {
             if (!IsOpen) return;
+            if (ModalInputGate.SpaceBlocked) return;   // R4: opening/closing press is consumed
             if (Input.GetKeyDown(KeyCode.Space)) Advance();
         }
 
