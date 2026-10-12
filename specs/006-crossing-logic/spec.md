@@ -118,3 +118,28 @@ Verified: fail-on-road -> toast -> flee to shoulder (y 0.5->3.0) -> re-talk open
 dialog -> Escorting startSide=-1 -> full traversal completes (helped=1); mid-road re-talk
 arms Escorting with startSide=0 -> auto-arms -1 when following player off the road;
 quiz-visit regression holds (helped unchanged, NPC held 8.9u); console 0 errors.
+
+## R4 fix (2026-10-12, user-reported: Officer Ada has the same loop)
+
+Root cause (the actual source, found by investigation — not any one NPC): script execution
+order between DialogManager.Update and InteractionManager.Update is UNDEFINED (no
+MonoManager entry). On the frame a SPACE press closes a modal's last line, if
+DialogManager polls first it advances+closes, then InteractionManager polls the SAME
+frame — GetKeyDown(Space) is still true for the same physical press — the router sees "no
+modal" and re-opens the dialog it just closed. Press = advance+close+reopen => infinite
+loop. Which script polls first is decided per scene load, which is why the bug seemed to
+"come back". Every modal carried the same latent race (dialog->quiz, quiz finish->reopen,
+popup close->interact).
+
+The never-again procedure: `ModalInputGate` (new static) — one frame-based swallow window
+(arm on close/open, covers close frame + next). Rules for any future modal:
+  1. Every Close()/open path calls ModalInputGate.SwallowSpacePress().
+  2. Every SPACE poller checks ModalInputGate.SpaceBlocked first.
+  3. Openers (StartDialog/StartQuiz) REFUSE while blocked — choke point covers every
+     caller: router, direct calls, walk-in triggers.
+Wired: DialogManager (Close, StartDialog, Update), QuizManager (Close, StartQuiz, Update),
+InteractionManager (Update router, OpenUp, popup Close).
+
+Verified live: same-frame close->reopen = False (loop dead); reopen on a LATER frame =
+True (no over-blocking), dialog still completes; escort-after-dialog works; quiz opens,
+answers, abandons cleanly; console 0 errors throughout.

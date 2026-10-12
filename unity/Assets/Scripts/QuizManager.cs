@@ -133,6 +133,7 @@ namespace SafeStreets
         public bool StartQuiz(QuizBank bank, GameObject source, System.Action<bool> onDone)
         {
             if (bank == null || bank.questions == null || bank.questions.Length == 0) return false;
+            if (ModalInputGate.SpaceBlocked) return false;   // R4 choke point (see StartDialog)
             if (IsOpen) return false;
             if (DialogManager.Instance != null && DialogManager.Instance.IsOpen) return false;
 
@@ -247,6 +248,7 @@ namespace SafeStreets
         public void Close(bool completed)
         {
             if (!IsOpen) return;
+            ModalInputGate.SwallowSpacePress();   // R4: the closing press must not re-route
             IsOpen = false;
             Source = null;
             StopAllCoroutines();
@@ -268,6 +270,7 @@ namespace SafeStreets
         private void Update()
         {
             if (!IsOpen) return;
+            if (ModalInputGate.SpaceBlocked) return;   // R4: opening/closing press is consumed
             if (Input.GetKeyDown(KeyCode.Escape)) { Close(false); return; }
             if (_locked) return;
             if (_finished)

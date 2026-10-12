@@ -25,6 +25,15 @@ namespace SafeStreets
         /// <summary>True while a TaskPanel (minigame) owns input/movement.</summary>
         public static bool TaskPaused { get; private set; }
 
+        /// <summary>Statics survive play-mode transitions and domain reloads in the
+        /// Editor; a stale true from a previous run would permanently freeze the
+        /// next session's player before any panel exists to clear it.</summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics()
+        {
+            TaskPaused = false;
+        }
+
         /// <summary>Called by TaskPanel.Open/Close — pauses movement like popups do.</summary>
         public static void PauseForTask(bool pause)
         {
@@ -59,6 +68,10 @@ namespace SafeStreets
                 _player = p.transform;
             }
             if (_pc == null) _pc = _player.GetComponent<PlayerController2D>();
+
+            // R4: SPACE swallowed by a modal that closed this frame/last frame —
+            // the same physical press must not re-open what just closed.
+            if (ModalInputGate.SpaceBlocked) return;
 
             // Feature 002: an open quiz (or dialog) owns input — nothing else routes
             // Spec 004: an open minigame owns input first of all
@@ -176,6 +189,11 @@ namespace SafeStreets
         public void TryClickOpen(Interactable it)
         {
             if (Open != null || it == null || _player == null) return;
+            // A modal (quiz/dialog/minigame) owns all input — clicking a building
+            // behind it must not yank the interaction popup up underneath.
+            if (TaskPaused) return;
+            if (QuizManager.Instance != null && QuizManager.Instance.IsOpen) return;
+            if (DialogManager.Instance != null && DialogManager.Instance.IsOpen) return;
             if (EdgeDistance(it, _player.position) > range + 0.8f) return;
             OpenUp(it);
         }
@@ -183,6 +201,7 @@ namespace SafeStreets
         private void OpenUp(Interactable it)
         {
             Open = it;
+            ModalInputGate.SwallowSpacePress();   // R4: opening press is consumed
             UpdateHint(null, null);
             var player = GameObject.FindWithTag("Player");
             var pc = player?.GetComponent<PlayerController2D>();
@@ -201,6 +220,7 @@ namespace SafeStreets
         public void Close()
         {
             Open = null;
+            ModalInputGate.SwallowSpacePress();   // R4: the closing press must not re-route
             // R6 (GGD-style): fade out, then deactivate; resume movement when hidden
             PanelAnimator.Ensure(_panel).FadeOut(() =>
             {
