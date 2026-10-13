@@ -62,6 +62,9 @@ namespace SafeStreets
             DialogStyle.Style(hint, 0.13f, 26, TextAnchor.LowerRight, new Color(0.7f, 0.8f, 0.9f), 52);
             hint.text = "SPACE ▸";
             hintGo.transform.localPosition = new Vector3(4.2f, -0.75f, 0f);
+
+            // R9: follow the camera (bottom-docked, GGD style) — never drifts off-screen
+            _panel.AddComponent<PopupFollowCamera>().bottomAnchor = 0.55f;
         }
 
         public void StartDialog(Conversation conversation, GameObject source)
@@ -114,22 +117,27 @@ namespace SafeStreets
 
         private System.Action _onDone;
 
+        // R9: every text pass through TextFit — wrapped to the box, shrunk if needed.
+        // Dialog panel is 9.4 x 2.2; body column is x -4.2..+4.2 below the name plate.
+        private void SetName(string s) => TextFit.Apply(_nameMesh, s, boxW: 8.4f, boxH: 0.45f);
+        private void SetBody(string s) => TextFit.Apply(_bodyMesh, s, boxW: 8.4f, boxH: 1.4f);
+
         private void ShowCurrent()
         {
             var line = _conversation.lines[_line];
             if (line.StartsWith("//"))
             {
-                _nameMesh.text = line.Substring(2);
+                SetName(line.Substring(2));
                 _line++;
                 if (_line >= _conversation.lines.Length) { Close(); return; }
-                _bodyMesh.text = _conversation.lines[_line];
+                SetBody(_conversation.lines[_line]);
                 return;
             }
             if (_line == 0)
             {
-                _nameMesh.text = _conversation.speakerName;
+                SetName(_conversation.speakerName);
             }
-            _bodyMesh.text = line;
+            SetBody(line);
         }
 
         public void Advance()
@@ -148,8 +156,8 @@ namespace SafeStreets
                 if (!string.IsNullOrEmpty(_conversation.closingTip))
                 {
                     _showingTip = true;
-                    _nameMesh.text = "TIP";
-                    _bodyMesh.text = _conversation.closingTip;
+                    SetName("TIP");
+                    SetBody(_conversation.closingTip);
                     return;
                 }
                 Close();

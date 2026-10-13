@@ -70,6 +70,7 @@ namespace SafeStreets
             InteractionManager.StyleText(ttm, _title, 0.30f, 40, TextAnchor.MiddleCenter,
                 new Color(1f, 0.8f, 0.3f), 52);
             titleGo.transform.localPosition = new Vector3(0f, 2.1f, 0f);
+            TextFit.Apply(ttm, _title, boxW: 8.4f, boxH: 0.55f);   // R9
 
             // instruction
             var insGo = new GameObject("Instruction");
@@ -78,6 +79,7 @@ namespace SafeStreets
             InteractionManager.StyleText(itm, "Drag the steps into the right order.", 0.16f, 30,
                 TextAnchor.MiddleCenter, new Color(0.75f, 0.85f, 0.95f), 52);
             insGo.transform.localPosition = new Vector3(0f, 1.6f, 0f);
+            TextFit.Apply(itm, "Drag the steps into the right order.", boxW: 8.4f, boxH: 0.45f);   // R9
 
             // slots (correct order), top area
             float slotY = 0.7f;
@@ -132,6 +134,8 @@ namespace SafeStreets
                 var ttm2 = txtGo.AddComponent<TextMesh>();
                 InteractionManager.StyleText(ttm2, order[i], 0.135f, 26, TextAnchor.MiddleCenter,
                     new Color(0.15f, 0.12f, 0.05f), 54);
+                // R9: long step names wrap AND shrink inside their 2.5x0.8 tile
+                TextFit.Apply(ttm2, order[i], boxW: 2.2f, boxH: 0.6f);
 
                 _tiles.Add(new Tile { go = tileGo, step = order[i], home = tileGo.transform.position, placed = false });
             }

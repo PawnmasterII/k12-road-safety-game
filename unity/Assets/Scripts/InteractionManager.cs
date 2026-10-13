@@ -232,6 +232,9 @@ namespace SafeStreets
             OpenUp(it);
         }
 
+        // R9: popup text goes through TextFit — wrap + shrink inside the 2x1.25-scaled box
+        private void SetPopupText(string s) => TextFit.Apply(_panelBody, s, boxW: 7.4f, boxH: 3.2f);
+
         private void OpenUp(Interactable it)
         {
             Open = it;
@@ -245,7 +248,7 @@ namespace SafeStreets
                 pc.GetComponent<Rigidbody2D>().linearVelocity = Vector2.zero;   // kill slide instantly
             }
 
-            _panelBody.text = "You are looking at " + it.label + ".\n\n(More content coming soon.)";
+            SetPopupText("You are looking at " + it.label + ".\n\n(More content coming soon.)");
             _panel.SetActive(true);
             PanelAnimator.Ensure(_panel).FadeIn();      // R6: GGD-style fade-in
             PositionPanel();
@@ -399,6 +402,9 @@ namespace SafeStreets
             // Hidden until OpenUp shows it. (BuildPanel runs at Awake; without this the
             // panel is born visible and squats on screen from launch — the launch bug.)
             _panel.SetActive(false);
+            // R9: follow the camera — a panel placed only at open drifts off-screen
+            // while CameraFollow2D settles after the freeze.
+            _panel.AddComponent<PopupFollowCamera>();
         }
 
         private void PositionPanel()
