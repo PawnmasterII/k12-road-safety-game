@@ -61,7 +61,8 @@ namespace SafeStreets
                 new Vector2(0.5f, 0.5f), 1f, 0, SpriteMeshType.FullRect);
             bsr.color = PanelCol;
             bsr.sortingOrder = 50;
-            _backdrop.transform.localScale = new Vector3(9f, 5.2f, 1f);
+            // 4-unit sprite: scale = world / 4 (PPU-1 scaling was 4x oversized)
+            _backdrop.transform.localScale = new Vector3(2.25f, 1.3f, 1f);   // -> 9 x 5.2
 
             // title
             var titleGo = new GameObject("Title");
@@ -94,7 +95,7 @@ namespace SafeStreets
                     new Vector2(0.5f, 0.5f), 1f, 0, SpriteMeshType.FullRect);
                 ssr.color = SlotCol;
                 ssr.sortingOrder = 51;
-                slotGo.transform.localScale = new Vector3(2.5f, 0.9f, 1f);
+                slotGo.transform.localScale = new Vector3(0.625f, 0.225f, 1f);   // -> 2.5 x 0.9
 
                 var numGo = new GameObject("Num");
                 numGo.transform.SetParent(slotGo.transform, false);
@@ -124,9 +125,11 @@ namespace SafeStreets
                     new Vector2(0.5f, 0.5f), 1f, 0, SpriteMeshType.FullRect);
                 tsr.color = TileCol;
                 tsr.sortingOrder = 53;
-                tileGo.transform.localScale = new Vector3(2.5f, 0.8f, 1f);
+                tileGo.transform.localScale = new Vector3(0.625f, 0.2f, 1f);   // -> 2.5 x 0.8
                 var col = tileGo.AddComponent<BoxCollider2D>();
-                col.size = new Vector2(2.5f, 0.8f);
+                // collider size is LOCAL: natural sprite units (4x4) x lossy(0.625,0.2) = 2.5 x 0.8 world
+                col.size = tsr.sprite.bounds.size;
+                col.offset = Vector2.zero;
 
                 var txtGo = new GameObject("Txt");
                 txtGo.transform.SetParent(tileGo.transform, false);
@@ -158,6 +161,12 @@ namespace SafeStreets
         {
             base.Open();
             ActiveInstance = this;
+            // R10b: this panel is built at EDIT time by the scene builder, so its
+            // texts were fitted with whatever formula was live back then (the old
+            // one under-measured 3.2x). Re-fit every text on open — idempotent
+            // (scale resets to 1 before measuring), so it stays correct forever.
+            FitGeometry();
+            FitTexts();
             // reset: tiles home, slots empty
             foreach (var t in _tiles)
             {
@@ -173,6 +182,58 @@ namespace SafeStreets
                 s.filled = false;
                 s.go.GetComponent<SpriteRenderer>().color = SlotCol;
                 _slots[i] = s;
+            }
+        }
+
+        /// <summary>R10b: heal scene-baked geometry built with the PPU-1 mistake
+        /// (white texture at PPU 1 is 4 units, so old scale(9,5.2) rendered 36x20.8).
+        /// Detects oversized sprites by world bounds and rescales to intended
+        /// world sizes; idempotent — a fresh build measures small and is untouched.
+        /// Must run BEFORE FitTexts (text lossy-scale depends on parent scale).</summary>
+        private void FitGeometry()
+        {
+            var backdrop = transform.Find("Backdrop");
+            if (backdrop != null)
+            {
+                var sr = backdrop.GetComponent<SpriteRenderer>();
+                if (sr != null && sr.bounds.size.x > 20f)
+                    backdrop.localScale = new Vector3(2.25f, 1.3f, 1f);   // -> 9 x 5.2
+            }
+            foreach (var t in GetComponentsInChildren<Transform>(true))
+            {
+                if (t.name.StartsWith("Slot"))
+                {
+                    var sr = t.GetComponent<SpriteRenderer>();
+                    if (sr != null && sr.bounds.size.x > 5f)
+                        t.localScale = new Vector3(0.625f, 0.225f, 1f);   // -> 2.5 x 0.9
+                }
+                else if (t.name.StartsWith("Tile_"))
+                {
+                    var sr = t.GetComponent<SpriteRenderer>();
+                    if (sr != null && sr.bounds.size.x > 5f)
+                    {
+                        t.localScale = new Vector3(0.625f, 0.2f, 1f);     // -> 2.5 x 0.8
+                        var col = t.GetComponent<BoxCollider2D>();
+                        if (col != null) col.size = sr.sprite.bounds.size; // natural units -> 2.5 x 0.8 world
+                    }
+                }
+            }
+        }
+
+        /// <summary>R10b: re-fit title/instruction/tile labels with current metrics.
+        /// Walks the HIERARCHY, not the runtime lists — a scene-saved panel comes
+        /// back from deserialization with _tiles/_slots empty (they only fill via
+        /// Create()), while its baked GameObjects are all still there.</summary>
+        private void FitTexts()
+        {
+            var title = transform.Find("Title")?.GetComponent<TextMesh>();
+            if (title != null) TextFit.Apply(title, title.text, boxW: 8.4f, boxH: 0.55f);
+            var instruction = transform.Find("Instruction")?.GetComponent<TextMesh>();
+            if (instruction != null) TextFit.Apply(instruction, instruction.text, boxW: 8.4f, boxH: 0.45f);
+            foreach (var t in GetComponentsInChildren<TextMesh>(true))
+            {
+                if (t.name == "Txt") TextFit.Apply(t, t.text, boxW: 2.2f, boxH: 0.6f);
+                else if (t.name == "Num") TextFit.Apply(t, t.text, boxW: 2.0f, boxH: 0.35f);
             }
         }
 

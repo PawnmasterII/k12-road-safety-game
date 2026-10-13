@@ -35,22 +35,45 @@ namespace SafeStreets
         /// rectangle centered on the mesh's anchor. Call AFTER styling (font,
         /// size, characterSize must be final) and after the final position is
         /// set (Apply touches ONLY localScale, never position/anchor).
+        ///
+        /// R10b: parent-scale aware. Under a SCALED parent (task tiles: sprite
+        /// scaled 0.625x0.2), localScale = s/parentLossy makes the WORLD scale
+        /// uniform s — so every size constraint is expressed in measured units
+        /// directly (world = measured * s; the parent's scale cancels). The
+        /// parent scale appears ONLY in the final localScale division, which
+        /// also renders the block UNDISTORTED.
         /// </summary>
         public static void Apply(TextMesh tm, string text, float boxW, float boxH)
         {
             if (tm == null) return;
+            var px = 1f; var py = 1f;
+            if (tm.transform.parent != null)
+            {
+                var pl = tm.transform.parent.lossyScale;
+                px = Mathf.Max(Mathf.Abs(pl.x), 0.0001f);
+                py = Mathf.Max(Mathf.Abs(pl.y), 0.0001f);
+            }
             tm.transform.localScale = Vector3.one;          // measure unscaled
             if (string.IsNullOrEmpty(text)) { tm.text = string.Empty; return; }
 
-            tm.text = WrapToWidth(tm, text, boxW);
+            // wrap in measured units — at world scale s=1 a line of L units
+            // renders exactly L world units wide, so the budget is the box itself
+            tm.text = WrapToWidth(tm, text, boxW * WidthMargin);
 
+            // TextMesh world metrics = glyphPixels * characterSize / 10
+            // (fontSize-independent). The original adv/fontSize*characterSize
+            // under-measured by exactly fontSize/10 (verified: 5.42 predicted
+            // vs 17.33 actual renderer bounds) — which is precisely why the
+            // char-count era clipped the TIP line.
+            float em = tm.fontSize / 10f * tm.characterSize;
             float w = BlockWidth(tm, tm.text);
-            float h = LineCount(tm.text) * LinePitch * tm.characterSize;
+            float h = LineCount(tm.text) * LinePitch * em;
             float s = Mathf.Min(
                 boxW * WidthMargin / Mathf.Max(w, 0.0001f),
                 boxH / Mathf.Max(h, 0.0001f));
             s = Mathf.Clamp(s, 0f, 1f);                     // shrink-only: never blow small text up
-            tm.transform.localScale = new Vector3(s, s, 1f);
+            // uniform WORLD scale s: divide out the parent's (possibly non-uniform) scale
+            tm.transform.localScale = new Vector3(s / px, s / py, 1f);
         }
 
         /// <summary>
@@ -91,7 +114,11 @@ namespace SafeStreets
             return sb.ToString();
         }
 
-        /// <summary>Rendered width of one line in world units (real glyph advances).</summary>
+        /// <summary>
+        /// Rendered width of one line in world units. TextMesh world metrics:
+        /// glyph advance (pixels at the requested fontSize) * characterSize / 10
+        /// — fontSize-independent. Verified against MeshRenderer.bounds.
+        /// </summary>
         public static float LineWidth(TextMesh tm, string s)
         {
             var font = tm.font;
@@ -104,7 +131,7 @@ namespace SafeStreets
                 if (font.GetCharacterInfo(c, out ci, tm.fontSize)) adv += ci.advance;
                 else adv += tm.fontSize * 0.55f;                     // atlas miss: average-glyph fallback
             }
-            return adv / tm.fontSize * tm.characterSize;
+            return adv * tm.characterSize / 10f;
         }
 
         /// <summary>Widest line of a (possibly multi-line) block.</summary>

@@ -34,14 +34,19 @@ namespace SafeStreets
         {
             _panel = new GameObject("DialogPanel");
 
-            // backdrop tinted dark (white-texture sprite @ PPU 16).
-            // (Removed a dead Resources.Load<Sprite>("") — empty path can only
-            // return null/log an error; the created sprite below is what shows.)
-            _backdrop = _panel.AddComponent<SpriteRenderer>();
-            _backdrop.sprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 16f);
+            // backdrop tinted dark — on its OWN child (never on the panel root:
+            // PanelAnimator pops the root scale; a root-sized backdrop would
+            // stretch every child text). FullRect + scale, never Sliced-on-Tight:
+            // the degenerate-geometry trap rendered the visual box smaller than
+            // the 9.4x2.2 layout column, so fitted text spilled past the box
+            // edge (the clipped-TIP screenshot).
+            var backdropGo = new GameObject("Backdrop");
+            backdropGo.transform.SetParent(_panel.transform, false);
+            _backdrop = backdropGo.AddComponent<SpriteRenderer>();
+            _backdrop.sprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 4, 4),
+                new Vector2(0.5f, 0.5f), 1f, 0, SpriteMeshType.FullRect);
             _backdrop.color = new Color(0.08f, 0.12f, 0.19f, 0.97f);
-            _backdrop.drawMode = SpriteDrawMode.Sliced;
-            _backdrop.size = new Vector2(9.4f, 2.2f);
+            backdropGo.transform.localScale = new Vector3(2.35f, 0.55f, 1f);   // 4-unit sprite -> 9.4 x 2.2 world units
             _backdrop.sortingOrder = 50;
 
             var nameGo = new GameObject("Name");
