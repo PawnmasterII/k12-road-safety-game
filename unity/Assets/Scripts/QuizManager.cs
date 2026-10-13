@@ -115,6 +115,9 @@ namespace SafeStreets
             xGo.AddComponent<QuizCloseButton>();
 
             _panel.SetActive(false);   // born hidden (the launch bug taught us)
+            // R9: the card follows the camera — a card placed only at open drifts
+            // off-screen while CameraFollow2D settles (feedback line clipped live).
+            _panel.AddComponent<PopupFollowCamera>();
         }
 
         private TextMesh MakeText(string name, float charSize, int fontSize,
@@ -170,8 +173,10 @@ namespace SafeStreets
             string kind = q.kind == QuestionKind.TrueFalse ? "TRUE or FALSE" : "MULTIPLE CHOICE";
             _header.text = $"{_bank.title}  -  Q{_q + 1}/{_bank.questions.Length}  -  {kind}";
             _prompt.anchor = TextAnchor.UpperLeft;
+            _prompt.alignment = TextAlignment.Left;
             _prompt.transform.localPosition = new Vector3(-4.4f, 2.9f, 0f);
-            _prompt.text = Wrap(q.prompt, 58);
+            // R9: wrap + shrink to the panel — the prompt can never spill out
+            TextFit.Apply(_prompt, q.prompt, boxW: 8.8f, boxH: 1.85f);
 
             int rows;
             if (q.kind == QuestionKind.TrueFalse)
@@ -184,15 +189,15 @@ namespace SafeStreets
             {
                 rows = Mathf.Min(q.choices.Length, 4);
                 for (int i = 0; i < rows; i++)
-                    _rowLabels[i].text = Wrap($"{i + 1}) {q.choices[i]}", 56);
+                    TextFit.Apply(_rowLabels[i], $"{i + 1}) {q.choices[i]}", boxW: 8.6f, boxH: 0.6f);
             }
             for (int i = 0; i < _rows.Length; i++)
             {
                 _rows[i].SetActive(i < rows);
                 if (i < rows) _rows[i].GetComponentInChildren<SpriteRenderer>().color = RowCol;
             }
-            _feedback.text = "Click an answer or press its number";
             _feedback.color = HintCol;
+            TextFit.Apply(_feedback, "Click an answer or press its number", boxW: 9.0f, boxH: 1.2f);
         }
 
         public void PressChoice(int index)
@@ -214,9 +219,12 @@ namespace SafeStreets
             }
 
             _feedback.color = right ? GoodCol : BadCol;
-            _feedback.text = right
-                ? Wrap("Correct!  " + q.source, 74)
-                : Wrap("Not quite - the answer is \"" + ChoiceText(q, correctIdx) + "\".  " + q.source, 74);
+            // R9: feedback carries the citation — often the longest string on the card
+            TextFit.Apply(_feedback,
+                right
+                    ? "Correct!  " + q.source
+                    : "Not quite - the answer is \"" + ChoiceText(q, correctIdx) + "\".  " + q.source,
+                boxW: 9.0f, boxH: 1.2f);
             _locked = true;
             StartCoroutine(NextIn());
         }
@@ -238,10 +246,10 @@ namespace SafeStreets
             _prompt.anchor = TextAnchor.MiddleCenter;
             _prompt.transform.localPosition = new Vector3(0f, 1.4f, 0f);
             string praise = _score == n ? "Perfect!" : _score * 2 >= n ? "Good job!" : "Keep practicing!";
-            _prompt.text = $"{_bank.title}: you got {_score} / {n}.\n{praise}";
+            TextFit.Apply(_prompt, $"{_bank.title}: you got {_score} / {n}.\n{praise}", boxW: 8.8f, boxH: 3.4f);
             for (int i = 0; i < _rows.Length; i++) _rows[i].SetActive(false);
-            _feedback.text = "Press SPACE to finish";
             _feedback.color = HintCol;
+            TextFit.Apply(_feedback, "Press SPACE to finish", boxW: 9.0f, boxH: 1.2f);
             Debug.Log($"[Quiz] completed activity={_bank.activityId} score={_score}/{n}");
         }
 
@@ -308,22 +316,6 @@ namespace SafeStreets
 
         private static string ChoiceText(QuizQuestion q, int i)
             => q.kind == QuestionKind.TrueFalse ? (i == 0 ? "TRUE" : "FALSE") : q.choices[i];
-
-        /// <summary>TextMesh has no auto-wrap: break on spaces at maxChars.</summary>
-        internal static string Wrap(string text, int maxChars)
-        {
-            if (string.IsNullOrEmpty(text) || text.Length <= maxChars) return text;
-            var sb = new System.Text.StringBuilder();
-            var line = "";
-            foreach (var w in text.Split(' '))
-            {
-                if (line.Length == 0) line = w;
-                else if (line.Length + 1 + w.Length <= maxChars) line += " " + w;
-                else { sb.Append(line).Append("\n"); line = w; }
-            }
-            if (line.Length > 0) sb.Append(line);
-            return sb.ToString();
-        }
     }
 
     /// <summary>One clickable answer row (bar + label).</summary>
