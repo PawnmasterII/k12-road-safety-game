@@ -172,9 +172,15 @@ namespace SafeStreets
 
         private SafeStreets.QuizZone FindNearQuizZone()
         {
+            // R8: edge distance (not center distance) — zones are big; a player
+            // standing in a far corner must still get the "Press SPACE" prompt.
             foreach (var zone in FindObjectsByType<SafeStreets.QuizZone>(FindObjectsSortMode.None))
             {
-                if (Vector2.Distance(zone.transform.position, _player.position) <= 2.6f) return zone;
+                var col = zone.GetComponent<Collider2D>();
+                float d = col != null
+                    ? Vector2.Distance(col.ClosestPoint(_player.position), _player.position)
+                    : Vector2.Distance(zone.transform.position, _player.position);
+                if (d <= 2.6f) return zone;
             }
             return null;
         }
