@@ -26,12 +26,10 @@ namespace SafeStreets
         public static bool TaskPaused { get; private set; }
 
         /// <summary>
-        /// R7 — TERMINAL state: the quest is won and WinBanner has frozen the
-        /// player for good. Every modal resume callback and the input router
-        /// must respect this: a task/quiz/dialog closing AFTER the win must
-        /// leave the win-freeze in place. (The stuck-forever bug: a task panel
-        /// was open when the 3rd friend crossed; its CoClose resume unpaused
-        /// the player straight through the win-freeze.)
+        /// R10 — free-roam win: true once the quest is complete. The win is NOT a
+        /// terminal freeze; WinBanner guarantees the player can move and modals
+        /// that open post-win (deferred thank-you dialogs etc.) never take the
+        /// freeze. Everything stays playable after the win.
         /// </summary>
         public static bool QuestWon
         {
@@ -93,12 +91,6 @@ namespace SafeStreets
             // R4/R5: SPACE swallowed by a modal that closed this frame/last frame, or
             // the Editor window is unfocused — stray physical keys never drive the game.
             if (!ModalInputGate.InputAllowed) return;
-
-            // R7: the game is won — input is terminal. No new popups, tasks,
-            // quizzes or dialogs may open after the win; only the win banner
-            // exists. (Post-win SPACE previously opened fresh modals whose
-            // close-resume then unpaused the player out of the won game.)
-            if (QuestWon) return;
 
             // Feature 002: an open quiz (or dialog) owns input — nothing else routes
             // Spec 004: an open minigame owns input first of all
@@ -227,7 +219,6 @@ namespace SafeStreets
             if (TaskPaused) return;
             if (QuizManager.Instance != null && QuizManager.Instance.IsOpen) return;
             if (DialogManager.Instance != null && DialogManager.Instance.IsOpen) return;
-            if (InteractionManager.QuestWon) return;   // R7: game is won — nothing opens
             if (EdgeDistance(it, _player.position) > range + 0.8f) return;
             OpenUp(it);
         }
@@ -264,7 +255,6 @@ namespace SafeStreets
             PanelAnimator.Ensure(_panel).FadeOut(() =>
             {
                 if (Open != null) return;   // a newer modal owns the player now
-                if (InteractionManager.QuestWon) return;   // R7: the win-freeze owns the player
                 var pc = GameObject.FindWithTag("Player")?.GetComponent<PlayerController2D>();
                 if (pc != null) pc.Paused = false;
             });

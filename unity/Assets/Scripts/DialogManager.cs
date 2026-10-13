@@ -86,8 +86,12 @@ namespace SafeStreets
             _showingTip = false;
             IsOpen = true;
 
+            // R10: post-win dialogs (e.g. a crossing NPC's deferred thank-you) never
+            // take the freeze — under free-roam there is nothing to restore on close,
+            // so a late dialog can never leave the player paused with dead input.
             var player = GameObject.FindWithTag("Player");
-            if (player != null) player.GetComponent<PlayerController2D>().Paused = true;
+            if (player != null && !InteractionManager.QuestWon)
+                player.GetComponent<PlayerController2D>().Paused = true;
 
             _panel.SetActive(true);
             PanelAnimator.Ensure(_panel).FadeIn();
@@ -107,7 +111,7 @@ namespace SafeStreets
             PanelAnimator.Ensure(_panel).FadeOut(() =>
             {
                 if (IsOpen) return;   // a newer modal owns the player now
-                if (InteractionManager.QuestWon) return;   // R7: the win-freeze owns the player
+                if (InteractionManager.TaskPaused) return;   // R10: a task owns the player
                 var player = GameObject.FindWithTag("Player");
                 if (player != null) player.GetComponent<PlayerController2D>().Paused = false;
             });

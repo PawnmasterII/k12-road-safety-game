@@ -38,10 +38,13 @@ namespace SafeStreets
 
         public void OnQuestComplete()
         {
+            // R10: post-win is FREE ROAM — the banner celebrates but never freezes
+            // the player. (The old terminal freeze + any modal that opened after
+            // the win = permanently frozen player with dead input: the "Ada brick".)
+            var playerGo2 = GameObject.FindWithTag("Player");
             // R7: dismiss anything that was open when the win fired — post-win
-            // input is terminal, so an open task/quiz/dialog/popup could never
-            // close itself and would squat on the banner forever (this session's
-            // stuck bug: the SCHOOL task panel was open at the 3rd crossing).
+            // input routing is dead, so an open task/quiz/dialog/popup could never
+            // close itself and would squat on the banner forever.
             var im = InteractionManager.Instance;
             if (im != null && im.Open != null) im.Close();
             var quiz = QuizManager.Instance;
@@ -50,6 +53,16 @@ namespace SafeStreets
             if (dlg != null && dlg.IsOpen) dlg.Close();
             foreach (var tp in FindObjectsByType<TaskPanel>(FindObjectsInactive.Exclude, FindObjectsSortMode.None))
                 if (tp.gameObject.activeInHierarchy) tp.FailAndClose();
+
+            // R10: free-roam guarantee. The modal resume callbacks decline to touch
+            // movement post-win (R7 stale-close protection), so the win itself is the
+            // last word: after dismissing everything, the player can ALWAYS move.
+            if (playerGo2 != null)
+            {
+                var pcWin = playerGo2.GetComponent<PlayerController2D>();
+                if (pcWin != null) pcWin.Paused = false;
+            }
+            InteractionManager.ClearTaskOwnership();
 
             if (_hud != null)
             {
@@ -60,8 +73,8 @@ namespace SafeStreets
             var playerGo = GameObject.FindWithTag("Player");
             if (playerGo != null)
             {
+                // R10: NO freeze here — the player keeps walking after the win.
                 _player = playerGo.GetComponent<PlayerController2D>();
-                if (_player != null) _player.Paused = true;   // freeze — the game is won
             }
 
             // simple confetti: 24 colored squares bursting from the player
