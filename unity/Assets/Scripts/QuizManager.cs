@@ -266,10 +266,10 @@ namespace SafeStreets
             {
                 // R5: state-validated resume — a newer dialog or task panel opened
                 // during the fade owns the player; this stale callback must not
-                // unpause under it.
+                // unpause under it. (R10: no special win case — free-roam win
+                // guarantees movement via WinBanner, modals resume normally.)
                 if (DialogManager.Instance != null && DialogManager.Instance.IsOpen) return;
                 if (InteractionManager.TaskPaused) return;
-                if (InteractionManager.QuestWon) return;   // R7: the win-freeze owns the player
                 var player = GameObject.FindWithTag("Player");
                 if (player != null) player.GetComponent<PlayerController2D>().Paused = false;
             });

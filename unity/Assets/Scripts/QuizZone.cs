@@ -26,7 +26,7 @@ namespace SafeStreets
         private bool TryStart()
         {
             if (bank == null) return false;
-            if (InteractionManager.QuestWon) return false;   // R7: game is won — quizzes are over
+            // R10: quizzes replay after the win (free roam) — no refusal.
             if (QuizManager.Instance == null || QuizManager.Instance.IsOpen) return false;
             if (DialogManager.Instance != null && DialogManager.Instance.IsOpen) return false;
             return QuizManager.Instance.StartQuiz(bank, gameObject, completed => { });

@@ -62,11 +62,6 @@ namespace SafeStreets
             var pa = PanelAnimator.Ensure(gameObject);
             pa.FadeOut(() =>
             {
-                if (InteractionManager.QuestWon)
-                {
-                    InteractionManager.ClearTaskOwnership();   // R7: task no longer owns input…
-                    return;                                    // …but the win-freeze owns the player
-                }
                 InteractionManager.PauseForTask(false);
                 OnComplete?.Invoke(success);
             });
