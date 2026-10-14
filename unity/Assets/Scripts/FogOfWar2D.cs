@@ -91,15 +91,21 @@ namespace SafeStreets
             _booted = true;
         }
 
-        private void LateUpdate()
+        /// <summary>
+        /// R6e: GGD runs vision in FixedUpdate (physics-aligned) — fog now steps in
+        /// lockstep with the player's 50Hz movement clock, eliminating the inter-clock
+        /// phase drift between sprite steps (50Hz), fog origin lerp (render rate), and
+        /// camera lerp (render rate) that read as boundary jitter while walking.
+        /// </summary>
+        private void FixedUpdate()
         {
             if (!_booted) Boot();
             if (_origin == null || _mf == null) return;
             _frame++;
             if (_frame % RecomputeEveryXFrame != 0) return;
 
-            // R6d: GGD-style smoothed origin (computedOrigin) — kills per-frame micro-jitter.
-            float k = 1f - Mathf.Exp(-OriginLerpSpeed * Time.deltaTime);
+            // R6d: GGD-style smoothed origin (computedOrigin) — kills micro-jitter.
+            float k = 1f - Mathf.Exp(-OriginLerpSpeed * Time.fixedDeltaTime);
             _smoothedOrigin = Vector2.Lerp(_smoothedOrigin, _origin.position, k);
 
             Vector2 center = _smoothedOrigin;

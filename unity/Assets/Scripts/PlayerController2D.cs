@@ -39,6 +39,10 @@ namespace SafeStreets
             _rb = GetComponent<Rigidbody2D>();
             _rb.gravityScale = 0f;      // top-down RPG: no gravity (tutorial #1)
             _rb.freezeRotation = true;
+            // R6e: interpolate Transform between 50Hz physics steps — without this the
+            // sprite teleports in 1/50s stairsteps and camera+fog chase it in phases
+            // (the residual jitter after R6d). GGD-standard fix.
+            _rb.interpolation = RigidbodyInterpolation2D.Interpolate;
         }
 
         private void FixedUpdate()
