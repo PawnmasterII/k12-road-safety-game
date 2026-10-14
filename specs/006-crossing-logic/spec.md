@@ -172,3 +172,21 @@ D2 opened mid-fade of D1, D1's callback fired later, player STAYED paused under 
 (old code: un-paused); D2's own close restored movement; DragDrop gated; escort/quiz
 regressions hold; audit PASS 4/4. Session-5 stray-keypress defect (deferred D1) is now
 CLOSED by the focus guard.
+
+## V1 — vision pass (2026-10-14: vision_analyze restored → capture+pixel verification)
+
+The standing rule (captures are the proof) finally executable end-to-end. Four capture
+rounds over Assets/Captures/vision_0*.png found and fixed:
+
+| # | Finding (pixel-verified) | Fix |
+|---|--------------------------|-----|
+| V1.1 | Ladder stripes + corridor confirmed visually correct (R2 held) | — |
+| V1.2 | NPC name labels floated ~1.95u above sprites: label localPosition 0.65 was multiplied by the NPC root's 3x lossyScale (SetWorldSize) | SceneGeo: divide offset by lossyScale (0.65→world 0.65, later 0.75 for descender clearance); same fix applied to the CrossingNPC toast |
+| V1.3 | "Press SPACE" prompt: raw yellow on cream stripes = unreadable; sortingLayerName "Decor" doesn't exist (silent Default fallback — the known TagManager trap) | Dark chip behind the hint text (order 29/30), phantom layer reference removed |
+| V1.4 | First chip was a screen-wide bar: whiteTexture is 4x4 UNITS at PPU 1 (localScale≠world size); chip covered the nameplate + half the NPC sprite | Chip scaled /4 (3.8x0.42 world), hint lifted to +1.15 (clears nameplate at +0.75) |
+| V1.5 | Input gating froze the router's hint tracking (prompt stuck at stale position while editor unfocused) | Router restructure: hint tracking ALWAYS runs; only input ACTIONS check ModalInputGate.InputAllowed |
+
+Final ship check (vision, 3/3 PASS): text fully inside chip (~4px padding), label clear
+of sprite, no new defects. Post-fix regressions: full escort scores (helped=1, north
+exit), ModalSafetyAudit PASS 4/4, console 0 errors. Captures committed under
+Assets/Captures/vision_0*.png.

@@ -387,7 +387,13 @@ namespace SafeStreets.EditorTools
 
             var labelGo = new GameObject("Name");
             labelGo.transform.SetParent(go.transform);
-            labelGo.transform.localPosition = new Vector3(0f, 0.65f, 0f);
+            // Vision-pass fix: the NPC root is lossy-scaled (SetWorldSize), so a raw
+            // localPosition rendered 3x too high (label detached from the sprite).
+            // Divide the desired WORLD offset by the parent's scale.
+            var lossy = go.transform.lossyScale;
+            // 0.75: clears the sprite top; descenders were clipping at 0.65 (vision pass)
+            labelGo.transform.localPosition = new Vector3(
+                0f, 0.75f / Mathf.Max(0.0001f, lossy.y), 0f);
             var tm = labelGo.AddComponent<TextMesh>();
             SafeStreets.DialogStyle.Style(tm, 0.11f, 26, TextAnchor.MiddleCenter, Color.white, 5);
             tm.text = name;
