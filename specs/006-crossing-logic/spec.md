@@ -190,3 +190,23 @@ Final ship check (vision, 3/3 PASS): text fully inside chip (~4px padding), labe
 of sprite, no new defects. Post-fix regressions: full escort scores (helped=1, north
 exit), ModalSafetyAudit PASS 4/4, console 0 errors. Captures committed under
 Assets/Captures/vision_0*.png.
+
+## R6d — fog smoothness (2026-10-14: "choppy/tweaky" root cause found + fixed)
+
+Complaint: fog boundary swims/jitters while walking. RE of GGD's FogOfWar (dump.cs 238551)
+against ours found the mechanism: our 360° ring was anchored to `facing` — every direction
+change shifted ALL ray angles, migrating hinges and morphing the silhouette = the swim.
+GGD uses computedOrigin smoothing + fixed-angle ray layout (CastRay offsetAngle) + lerp
+knobs (flashLightLerpSpeed, fovChangeSpeedFactor) + DP simplification.
+
+Fix (surgical, on the proven mesh algorithm):
+- 360° ring anchored to a FIXED world angle (a circle has no facing); cone mode keeps facing
+- GGD-style computedOrigin: smoothed fog center (OriginLerpSpeed 14) kills micro-jitter
+
+R6b/R6c explored a corner-vertex ray system (GGD's HasEdge/edge-point buffers) — vision
+analysis caught it producing comb-teeth wedges (radial-strip complement sprays FAR quads
+past occluder corners when hit distances jump; a correct port needs GGD's
+polygon-with-hole triangulation via verticesShapeBuffer). Reverted; the corner-ray route is
+documented for a future rewrite. Verification: 15 captures, 2 A/B controls (one invalid —
+recompile 400 left the OLD code, caught by assembly probe), final = SMOOTH (clean arc, no
+spikes, even penumbra), console 0 errors.
