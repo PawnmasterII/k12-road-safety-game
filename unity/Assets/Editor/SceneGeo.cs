@@ -274,6 +274,10 @@ namespace SafeStreets.EditorTools
             return go;
         }
 
+        /// <summary>Public accessors for other builders (CityBuilder2D).</summary>
+        public static Sprite CircleSpritePublic() => CircleSprite();
+        public static Sprite SquareSpritePublic() => SquareSprite();
+
         private static Sprite CircleSprite()
         {
             // persisted so it survives scene reloads
@@ -410,7 +414,7 @@ namespace SafeStreets.EditorTools
         // ---- Feature 002 helpers ----
 
         /// <summary>Multiple-choice question (correct = the FIRST choice; MC shuffles nothing).</summary>
-        private static SafeStreets.QuizQuestion MC(string prompt, string correct,
+        public static SafeStreets.QuizQuestion MC(string prompt, string correct,
             string wrong1, string wrong2, string wrong3, string source)
             => new SafeStreets.QuizQuestion
             {
@@ -422,7 +426,7 @@ namespace SafeStreets.EditorTools
             };
 
         /// <summary>True/false question (right/wrong).</summary>
-        private static SafeStreets.QuizQuestion TF(string statement, bool trueIsCorrect, string source)
+        public static SafeStreets.QuizQuestion TF(string statement, bool trueIsCorrect, string source)
             => new SafeStreets.QuizQuestion
             {
                 kind = QuestionKind.TrueFalse,
@@ -431,7 +435,7 @@ namespace SafeStreets.EditorTools
                 source = source,
             };
 
-        private static SafeStreets.QuizBank MakeBank(string activityId, string title,
+        public static QuizBank MakeBank(string activityId, string title,
             params SafeStreets.QuizQuestion[] questions)
         {
             var b = ScriptableObject.CreateInstance<SafeStreets.QuizBank>();

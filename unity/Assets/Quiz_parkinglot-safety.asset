@@ -1,0 +1,50 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 0}
+  m_Name: Quiz_parkinglot-safety
+  m_EditorClassIdentifier: Assembly-CSharp:SafeStreets:QuizBank
+  activityId: parkinglot-safety
+  title: Parking Lot Safety
+  questions:
+  - kind: 1
+    prompt: Where do you walk in a parking lot?
+    trueIsCorrect: 0
+    choices:
+    - In the aisle where drivers can see you, with a grown-up
+    - Between parked cars to be faster
+    - Behind cars that are backing up
+    - Anywhere - cars always stop
+    correctIndex: 0
+    source: 'Guide, Preschool-Grade 1: keep an adult close in parking lots; parking
+      areas are not play spaces'
+  - kind: 1
+    prompt: A car has white backup lights on. What do you do?
+    trueIsCorrect: 0
+    choices:
+    - Stop and wait until it leaves or the driver waves you past
+    - Run behind it quickly
+    - Tap the car so it stops
+    - Keep walking - it sees you
+    correctIndex: 0
+    source: 'Guide, Grades 2-3: look for turning vehicles, driveway traffic, backing
+      vehicles'
+  - kind: 1
+    prompt: Your toy rolls under a parked car. What do you do?
+    trueIsCorrect: 0
+    choices:
+    - Tell a grown-up instead of crawling under
+    - Crawl under and grab it fast
+    - Ask a stranger to get it
+    - Kick the car until it rolls out
+    correctIndex: 0
+    source: 'Guide, Preschool-Grade 1: children do not chase a ball or retrieve an
+      item'

@@ -1,0 +1,49 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 0}
+  m_Name: Quiz_signals-signs
+  m_EditorClassIdentifier: Assembly-CSharp:SafeStreets:QuizBank
+  activityId: signals-signs
+  title: Signals and Signs
+  questions:
+  - kind: 1
+    prompt: The WALK sign just turned on. What do you do first?
+    trueIsCorrect: 0
+    choices:
+    - Still look both ways for turning cars before stepping out
+    - Run without looking - the sign protects you
+    - Look at your phone while crossing
+    - Cross diagonally to save time
+    correctIndex: 0
+    source: 'Guide, Grades 4-5: obey pedestrian signals and still check for turning
+      vehicles'
+  - kind: 1
+    prompt: At a 4-way stop, when may you cross in front of a stopped car?
+    trueIsCorrect: 0
+    choices:
+    - After eye contact or a wave showing the driver sees you
+    - The instant the car stops
+    - While the car is still rolling
+    - Only if no driver is inside
+    correctIndex: 0
+    source: 'Guide, Grades 4-5: make eye contact with drivers before crossing'
+  - kind: 1
+    prompt: Where do you cross near a roundabout?
+    trueIsCorrect: 0
+    choices:
+    - At the marked crosswalk set back from the circle
+    - Straight across the middle of the circle
+    - Between cars waiting to enter
+    - Anywhere - cars go slow there
+    correctIndex: 0
+    source: 'Guide, Grades 6-8: use designated crossings at roundabouts; never cross
+      the circulatory roadway'
