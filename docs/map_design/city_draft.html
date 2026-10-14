@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SafeStreets — City Map Draft</title>
+<style>
+  :root { color-scheme: light dark; }
+  html,body { margin:0; padding:0; background:var(--card,#fff); color:var(--foreground,#111);
+    font:13px/1.45 var(--body-font, system-ui, sans-serif); }
+  .wrap { display:flex; gap:10px; padding:10px; align-items:flex-start; }
+  #mapbox { flex:1 1 auto; min-width:640px; border:1px solid var(--border,#ccc); border-radius:8px;
+    overflow:hidden; background:#5B8C5A; position:relative; }
+  svg { display:block; width:100%; height:auto; cursor:grab; }
+  svg.dragging { cursor:grabbing; }
+  #panel { flex:0 0 300px; max-width:300px; }
+  .card { border:1px solid var(--border,#ccc); border-radius:8px; padding:10px 12px; margin-bottom:10px;
+    background:var(--card,#fff); }
+  .card h3 { margin:0 0 6px; font-size:14px; }
+  .card .meta { color:var(--muted-foreground,#777); font-size:12px; }
+  .tag { display:inline-block; padding:1px 7px; border-radius:10px; font-size:11px; margin:2px 3px 2px 0;
+    border:1px solid var(--border,#bbb); }
+  .tag.hook { background:var(--accent,#eef); }
+  .legend { font-size:12px; }
+  .legend .sw { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px;
+    vertical-align:-1px; border:1px solid rgba(0,0,0,.25); }
+  .toggles label { margin-right:10px; font-size:12px; cursor:pointer; user-select:none; }
+  #hint { color:var(--muted-foreground,#777); font-size:11px; margin:4px 2px 8px; }
+  @media (max-width: 900px){ .wrap{flex-direction:column} #panel{max-width:none} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <div id="hint">Scroll = zoom · drag = pan · click any landmark / intersection / zone for its safety lesson</div>
+    <div class="card toggles" style="margin-bottom:8px">
+      <b style="font-size:12px">Layers:</b>
+      <label><input type="checkbox" id="lyZones" checked> Quiz zones</label>
+      <label><input type="checkbox" id="lyProps" checked> Props</label>
+      <label><input type="checkbox" id="lyNpc" checked> NPCs</label>
+      <label><input type="checkbox" id="lyLabels" checked> Labels</label>
+    </div>
+    <div id="mapbox"></div>
+  </div>
+  <div id="panel">
+    <div class="card" id="info">
+      <h3>SafeStreets — City Draft v1</h3>
+      <div class="meta">80 × 56 world units · 9 streets · 9 controlled intersections · 12 crosswalks ·
+      17 landmarks · railroad edge · ~40 props · 6 NPCs.<br><br>
+      Click anything on the map to see its safety lesson (pedagogy layer by Agent B).
+      Draft only — nothing has been built in Unity yet.</div>
+    </div>
+    <div class="card legend">
+      <b style="font-size:12px">Legend</b><br>
+      <span class="sw" style="background:#3F4247"></span>road
+      <span class="sw" style="background:#B9BDC4"></span>sidewalk<br>
+      <span class="sw" style="background:#7BC47F"></span>bike lane
+      <span class="sw" style="background:#EBECE0"></span>zebra<br>
+      <span class="sw" style="background:rgba(255,242,122,.45)"></span>quiz zone
+      <span class="sw" style="background:#F28C26"></span>NPC
+    </div>
+  </div>
+</div>
+<script>
+// ---- data (Agent A layout JSON, inlined) ----
+const D = {"world":{"width":80,"height":56},"streets":[{"name":"Main Avenue","orientation":"H","center":{"x":40,"y":28},"from":0,"to":80,"width":4,"lanes":2,"oneway":false,"bikeLane":true,"sidewalks":true},{"name":"North Collector","orientation":"H","center":{"x":40,"y":14},"from":0,"to":80,"width":3,"lanes":2,"oneway":false,"bikeLane":false,"sidewalks":true},{"name":"South Street","orientation":"H","center":{"x":40,"y":42},"from":0,"to":80,"width":2.5,"lanes":1,"oneway":false,"bikeLane":false,"sidewalks":true},{"name":"Central Collector","orientation":"V","center":{"x":40,"y":28},"from":0,"to":56,"width":3,"lanes":2,"oneway":false,"bikeLane":false,"sidewalks":true},{"name":"West Street","orientation":"V","center":{"x":14,"y":28},"from":0,"to":56,"width":2.5,"lanes":1,"oneway":false,"bikeLane":false,"sidewalks":true},{"name":"East Street","orientation":"V","center":{"x":66,"y":28},"from":0,"to":56,"width":2.5,"lanes":1,"oneway":false,"bikeLane":false,"sidewalks":true},{"name":"Pair Street A (one-way S)","orientation":"V","center":{"x":47,"y":21},"from":15.5,"to":26.5,"width":2.5,"lanes":1,"oneway":true,"bikeLane":false,"sidewalks":false},{"name":"Pair Street B (one-way N)","orientation":"V","center":{"x":59,"y":21},"from":15.5,"to":26.5,"width":2.5,"lanes":1,"oneway":true,"bikeLane":false,"sidewalks":false},{"name":"Park Lane","orientation":"V","center":{"x":27,"y":51},"from":45.5,"to":55.5,"width":2,"lanes":1,"oneway":false,"bikeLane":false,"sidewalks":false}],"intersections":[{"x":40,"y":28,"type":"signal","streets":["Main Avenue","Central Collector"]},{"x":40,"y":14,"type":"signal","streets":["North Collector","Central Collector"]},{"x":14,"y":28,"type":"stop4","streets":["Main Avenue","West Street"]},{"x":66,"y":28,"type":"roundabout","streets":["Main Avenue","East Street"]},{"x":66,"y":14,"type":"stop4","streets":["North Collector","East Street"]},{"x":14,"y":14,"type":"stop2","streets":["North Collector","West Street"]},{"x":40,"y":42,"type":"stop2","streets":["South Street","Central Collector"]},{"x":14,"y":42,"type":"stop2","streets":["South Street","West Street"]},{"x":66,"y":42,"type":"stop2","streets":["South Street","East Street"]}],"crosswalks":[{"x":40,"y":28,"angle":90,"length":4},{"x":40,"y":28,"angle":0,"length":3},{"x":40,"y":14,"angle":90,"length":3},{"x":40,"y":14,"angle":0,"length":3},{"x":14,"y":28,"angle":90,"length":4},{"x":14,"y":14,"angle":90,"length":3},{"x":66,"y":24.5,"angle":90,"length":2.5},{"x":66,"y":31.5,"angle":90,"length":2.5},{"x":40,"y":42,"angle":90,"length":2.5},{"x":66,"y":42,"angle":90,"length":2.5},{"x":24,"y":14,"angle":90,"length":3,"note":"school mid-block crossing with guard"},{"x":30,"y":28,"angle":90,"length":4,"note":"bus stop crossing"}],"landmarks":[{"name":"SCHOOL","kind":"school","x":18,"y":3,"w":16,"h":8,"color":"#6B7FA3","props":["drop-off loop","crossing guard post"]},{"name":"LIBRARY","kind":"civic","x":45,"y":3,"w":9,"h":8,"color":"#737378","props":["front steps","bike rack"]},{"name":"HOSPITAL","kind":"civic","x":56,"y":3,"w":8,"h":8,"color":"#737378","props":["ambulance bay","emergency driveway"]},{"name":"FIRE STATION","kind":"civic","x":69,"y":3,"w":9,"h":8,"color":"#737378","props":["apron","apparatus bays"]},{"name":"APARTMENTS","kind":"residential","x":45,"y":18,"w":8,"h":7,"color":"#737378","props":["driveway"]},{"name":"COMMUNITY PLAZA","kind":"plaza","x":55,"y":18,"w":8,"h":7,"color":"#B9BDC4","props":["e-bike kiosk","meeting point"]},{"name":"GROCERY","kind":"retail","x":45,"y":33,"w":12,"h":8,"color":"#737378","props":["cart return","angled stalls"]},{"name":"PARKING LOT","kind":"parking","x":45,"y":41.5,"w":12,"h":4,"color":"#565A60","props":["marked stalls","aisle"]},{"name":"PARK","kind":"park","x":17,"y":46,"w":20,"h":9,"color":"#4E7C4A","props":["pond","shared-use paths","bridge"]},{"name":"GAS STATION","kind":"retail","x":69,"y":32,"w":10,"h":6,"color":"#737378","props":["forecourt","pumps","store"]},{"name":"POLICE","kind":"civic","x":69,"y":45,"w":9,"h":6,"color":"#737378","props":["lobby","trusted-officer meet"]},{"name":"HOUSE 1","kind":"residential","x":18,"y":33,"w":3.4,"h":3,"color":"#8A8A90","props":["driveway"]},{"name":"HOUSE 2","kind":"residential","x":22.4,"y":33,"w":3.4,"h":3,"color":"#8A8A90","props":["driveway"]},{"name":"HOUSE 3","kind":"residential","x":26.8,"y":33,"w":3.4,"h":3,"color":"#8A8A90","props":["driveway"]},{"name":"HOUSE 4","kind":"residential","x":31.2,"y":33,"w":3.4,"h":3,"color":"#8A8A90","props":["driveway"]},{"name":"HOUSE 5","kind":"residential","x":4,"y":46,"w":3.4,"h":3,"color":"#8A8A90","props":["driveway"]},{"name":"HOUSE 6","kind":"residential","x":8.4,"y":46,"w":3.4,"h":3,"color":"#8A8A90","props":["driveway"]}],"props":[{"type":"trafficlight","x":38.2,"y":25.8,"angle":0},{"type":"trafficlight","x":41.8,"y":25.8,"angle":0},{"type":"trafficlight","x":38.2,"y":30.2,"angle":0},{"type":"trafficlight","x":41.8,"y":30.2,"angle":0},{"type":"trafficlight","x":38.2,"y":12.2,"angle":0},{"type":"trafficlight","x":41.8,"y":12.2,"angle":0},{"type":"trafficlight","x":38.2,"y":15.8,"angle":0},{"type":"trafficlight","x":41.8,"y":15.8,"angle":0},{"type":"stopsign","x":12.4,"y":25.6,"angle":0},{"type":"stopsign","x":15.6,"y":30.4,"angle":0},{"type":"stopsign","x":64.4,"y":11.6,"angle":0},{"type":"stopsign","x":67.6,"y":16.4,"angle":0},{"type":"stopsign","x":38.4,"y":40.4,"angle":0},{"type":"stopsign","x":12.4,"y":40.4,"angle":0},{"type":"stopsign","x":64.4,"y":40.4,"angle":0},{"type":"lamp","x":10,"y":24.6,"angle":0},{"type":"lamp","x":20,"y":31.4,"angle":0},{"type":"lamp","x":34,"y":24.6,"angle":0},{"type":"lamp","x":50,"y":31.4,"angle":0},{"type":"lamp","x":58,"y":24.6,"angle":0},{"type":"lamp","x":74,"y":24.6,"angle":0},{"type":"hydrant","x":17.5,"y":31.8,"angle":0},{"type":"hydrant","x":36,"y":31.8,"angle":0},{"type":"hydrant","x":44.5,"y":31.8,"angle":0},{"type":"tree","x":6,"y":18,"angle":0},{"type":"tree","x":10,"y":22,"angle":0},{"type":"tree","x":36,"y":18,"angle":0},{"type":"tree","x":33,"y":22,"angle":0},{"type":"tree","x":68,"y":18,"angle":0},{"type":"tree","x":72,"y":22,"angle":0},{"type":"tree","x":20,"y":44,"angle":0},{"type":"tree","x":34,"y":44,"angle":0},{"type":"bench","x":22,"y":48.5,"angle":0},{"type":"bench","x":30,"y":52,"angle":0},{"type":"bench","x":33.5,"y":47.5,"angle":0},{"type":"busstop","x":30,"y":25.2,"angle":0},{"type":"busstop","x":50,"y":30.8,"angle":0},{"type":"railroad-gate","x":2,"y":42,"angle":0},{"type":"crossbuck","x":2,"y":13.5,"angle":0}],"rail":{"orientation":"V","x":2,"from":0,"to":56,"name":"Coast Line"},"zones":[{"name":"School Zone","kind":"school-zone","x":16,"y":12.2,"w":25,"h":3.6},{"name":"Quiz: Plaza","kind":"quiz","x":55,"y":18,"w":8,"h":7},{"name":"Quiz: Gas forecourt","kind":"quiz","x":69,"y":32,"w":10,"h":6},{"name":"Quiz: Parking lot","kind":"quiz","x":45,"y":41.5,"w":12,"h":4},{"name":"Quiz: Roundabout approach","kind":"quiz","x":63,"y":22.5,"w":6,"h":11},{"name":"Quiz: Railroad crossing","kind":"quiz","x":0.5,"y":39.5,"w":5,"h":5},{"name":"Quiz: Bus stop","kind":"quiz","x":27.5,"y":23.5,"w":5,"h":3.5},{"name":"Quiz: Bike lane","kind":"quiz","x":44,"y":25.4,"w":10,"h":1.2},{"name":"Quiz: Teen driver corridor","kind":"quiz","x":70,"y":26.4,"w":9,"h":3.2},{"name":"Park pond","kind":"park-pond","x":24,"y":49,"w":7,"h":4.5}],"npcs":[{"name":"Guard Gus","role":"Crossing guard \u2014 stop paddle, school crossing","x":24,"y":13},{"name":"Driver Dee","role":"Bus driver \u2014 board signal, danger zone","x":50,"y":30.4},{"name":"Officer Ada","role":"Town guide \u2014 quest giver","x":42.5,"y":25.6},{"name":"Granny Rose","role":"Escort: grocery run (parking lot rules)","x":51,"y":41.6},{"name":"Little Sam","role":"Escort: park to school (paths + crossing)","x":30,"y":47},{"name":"Mia","role":"Escort: library books (sidewalk + one-way look)","x":49.5,"y":12.5}]};
+
+// ---- lessons (Agent B pedagogy layer, keyed by element) ----
+const L = {
+ "SCHOOL":["Cross only at the marked crosswalk and obey the guard's stop paddle.","NPC escort + quiz zone","2-3","sh-school-bike"],
+ "School Zone":["20 mph school-zone window — drivers slow, walkers use the guard.","quiz zone / sign-read","2-3","sh-school-bike"],
+ "SCHOOL drop-off":["Eye contact with drivers before stepping into the loop.","sign-read stop","2-3","sh-school-bike"],
+ "LIBRARY":["Get off and walk a bike/scooter on crowded sidewalks.","sign-read stop","4-5","st-riding"],
+ "HOSPITAL":["Never cross an active emergency driveway; yield to sirens.","sign-read stop","6-8","signals-signs"],
+ "FIRE STATION":["Keep the apron clear; stop for apparatus with lights/sirens.","quiz zone","4-5","signals-signs"],
+ "POLICE":["A trusted-uniformed officer is a safe person to ask for help.","NPC escort","K-1","le-crossing"],
+ "GROCERY":["Watch for cars backing out of angled stalls; walk with carts on the sidewalk.","task minigame","2-3","parkinglot-safety"],
+ "COMMUNITY PLAZA":["Eyes up, phone away; set a meeting point with your grown-up.","quiz zone","2-3","le-crossing"],
+ "GAS STATION":["Never walk through fuel lanes; blind spots around pumps.","quiz zone","4-5","driveway-blindspot"],
+ "PARKING LOT":["Walk with a grown-up, use aisles not between cars.","task minigame","K-1","parkinglot-safety"],
+ "PARK":["Shared-use paths: walkers keep right, bikes pass left with a warning.","quiz zone","4-5","st-riding"],
+ "Park pond":["Stop-look-listen at path junctions; never chase a ball into the road.","NPC escort","K-1","le-crossing"],
+ "APARTMENTS":["Driveway edges: reversing lights and wheels before crossing.","sign-read stop","2-3","driveway-blindspot"],
+ "HOUSES":["Stop at every driveway edge; look for backup lights.","sign-read stop","2-3","driveway-blindspot"],
+ "BUS STOP":["Wait on the sidewalk, back from the curb, until the bus fully stops.","NPC escort + quiz zone","2-3","bus-stop-rules"],
+ "Avenue BIKE LANE":["Ride with traffic, signal and shoulder-check before merges.","quiz zone","6-8","st-riding"],
+ "Signalized intersection":["Cross only on WALK — still check turning cars.","task minigame","4-5","signals-signs"],
+ "4-way stop":["First to stop goes first; eye contact before stepping out.","sign-read stop","4-5","signals-signs"],
+ "2-way stop":["The stopped street yields; pedestrians use the crosswalk leg.","quiz zone","6-8","signals-signs"],
+ "Roundabout":["Cross at the crosswalk one car-length back; never cross the circle.","quiz zone","6-8","signals-signs"],
+ "One-way pair":["Look the correct ONE way before stepping off the curb.","sign-read stop","2-3","signals-signs"],
+ "RAILROAD CROSSING":["Never cross when lights flash or gates fall; stuck = get out and call the number.","quiz zone","4-5","railroad-crossing"],
+ "Teen driver corridor":["3-foot passing, phone stowed, GDL night limits.","quiz zone","9-12","rr-florida"],
+ "E-bike kiosk":["Faster + heavier = longer stopping distance; helmet before unlock.","quiz zone","6-8","st-riding"]
+};
+
+// ---- svg helpers ----
+const NS = "http://www.w3.org/2000/svg";
+const svg = document.createElementNS(NS,"svg");
+svg.setAttribute("viewBox","-2 -2 84 60");
+let vb = {x:-2,y:-2,w:84,h:60};
+function applyVB(){ svg.setAttribute("viewBox",`${vb.x} ${vb.y} ${vb.w} ${vb.h}`); }
+function el(tag, attrs, parent, txt){
+  const e = document.createElementNS(NS,tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (txt != null) e.textContent = txt;
+  (parent||svg).appendChild(e); return e;
+}
+const P = svg; // root
+const gGround = el("g",{},P), gRail = el("g",{},P), gRoad = el("g",{},P), gCross = el("g",{},P),
+      gMark = el("g",{},P), gLand = el("g",{},P), gZone = el("g",{},P), gProp = el("g",{},P),
+      gNpc = el("g",{},P), gLbl = el("g",{},P);
+
+// ground
+el("rect",{x:-2,y:-2,width:84,height:60,fill:"#5B8C5A"},gGround);
+
+// railroad (west edge)
+el("rect",{x:0.4,y:-2,width:1.1,height:60,fill:"#565A60"},gRail);
+for(let y=-1;y<57;y+=2.2) el("rect",{x:0.1,y:y,width:1.7,height:0.5,fill:"#6E6E74"},gRail);
+
+// streets: sidewalk under, road over, markings on top
+D.streets.forEach(s=>{
+  const H = s.orientation==="H";
+  const len = (s.to - s.from), cx = H ? (s.from+s.to)/2 : s.center.x, cy = H ? s.center.y : (s.from+s.to)/2;
+  const w = s.width, L = len;
+  if (s.sidewalks) el("rect",{x:H?s.from:cx-w/2-0.6, y:H?cy-w/2-0.6:s.from, width:H?L:w+1.2, height:H?w+1.2:L, fill:"#B9BDC4", rx:0.3},gRoad);
+  el("rect",{x:H?s.from:cx-w/2, y:H?cy-w/2:s.from, width:H?L:w, height:H?w:L, fill:"#3F4247"},gRoad);
+  // center dashes
+  const dash = {stroke: s.lanes>1?"#E8C55A":"#D9D9D9","stroke-width":0.14,"stroke-dasharray":"1 0.8",fill:"none"};
+  if (H) el("line",{x1:s.from,y1:cy,x2:s.to,y2:cy,...dash},gMark);
+  else   el("line",{x1:cx,y1:s.from,x2:cx,y2:s.to,...dash},gMark);
+  if (s.bikeLane){ el("rect",{x:s.from,y:cy-w/2+0.35,width:L,height:1,fill:"#7BC47F",opacity:0.85},gMark);
+    el("text",{x:s.from+1,y:cy-w/2+1.1,"font-size":0.9,fill:"#1F4D22"},gMark,"BIKE"); }
+  if (s.oneway){ // direction arrows
+    for(let a=s.from+2; a<s.to-1.5; a+=6){
+      if (H) el("path",{d:`M ${a} ${cy} l 1.6 0 m -0.7 -0.45 l 0.7 0.45 l -0.7 0.45`,stroke:"#E8C55A","stroke-width":0.18,fill:"none"},gMark);
+      else { const up = s.name.includes("(one-way N)"); el("path",{d:up?`M ${cx} ${a+1.6} l 0 -1.6 m -0.45 0.7 l 0.45 -0.7 l 0.45 0.7`:`M ${cx} ${a} l 0 1.6 m -0.45 -0.7 l 0.45 0.7 l 0.45 -0.7`,stroke:"#E8C55A","stroke-width":0.18,fill:"none"},gMark); }
+    }
+  }
+  if (s.name.startsWith("Pair")) { const up = s.name.includes("N)");
+    el("text",{x:cx+0.4,y:up?s.from+2:s.to-1.6,"font-size":1.1,fill:"#E8C55A"},gMark, up?"▲":"▼"); }
+});
+
+// crosswalks (zebra rungs parallel to traffic of the crossed road)
+D.crosswalks.forEach(c=>{
+  const g = el("g",{},gCross);
+  const roadW = c.length>=4?3.6:2.6, rungs = 6;
+  if (c.angle===0){ // crossing a horizontal road: bars long in x
+    for(let i=0;i<rungs;i++){ const y = c.y - roadW/2 + 0.25 + i*(roadW-0.5)/(rungs-1);
+      el("rect",{x:c.x-c.length/2,y:y-0.16,width:c.length,height:0.32,fill:"#EBECE0"},g); }
+  } else { // crossing a vertical road: bars long in y
+    for(let i=0;i<rungs;i++){ const x = c.x - roadW/2 + 0.25 + i*(roadW-0.5)/(rungs-1);
+      el("rect",{x:x-0.16,y:c.y-c.length/2,width:0.32,height:c.length,fill:"#EBECE0"},g); }
+  }
+});
+
+// intersections
+D.intersections.forEach(ix=>{
+  const g = el("g",{},gMark);
+  if (ix.type==="roundabout"){ el("circle",{cx:ix.x,cy:ix.y,r:1.7,fill:"#5B8C5A",stroke:"#D9D9D9","stroke-width":0.15},g);
+    el("circle",{cx:ix.x,cy:ix.y,r:0.5,fill:"#4E7C4A"},g); }
+  else if (ix.type==="signal"){ [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([dx,dy])=>{
+      el("rect",{x:ix.x+dx*2.3-0.25,y:ix.y+dy*2.3-0.25,width:0.5,height:0.5,fill:"#222",rx:0.1},g);
+      el("circle",{cx:ix.x+dx*2.3,cy:ix.y+dy*2.3-0.1,r:0.12,fill:"#E5533C"},g);
+      el("circle",{cx:ix.x+dx*2.3,cy:ix.y+dy*2.3+0.1,r:0.12,fill:"#5FA653"},g); }); }
+  else if (ix.type==="stop4"){ el("circle",{cx:ix.x,cy:ix.y,r:0.55,fill:"#C0392B"},g);
+    el("text",{x:ix.x,y:ix.y+0.25,"font-size":0.7,fill:"#fff","text-anchor":"middle"},g,"STOP"); }
+  else if (ix.type==="stop2"){ el("circle",{cx:ix.x-1.1,cy:ix.y,r:0.3,fill:"#C0392B"},g); }
+  // click target
+  const hit = el("circle",{cx:ix.x,cy:ix.y,r:2.6,fill:"transparent",cursor:"pointer"},g);
+  hit.addEventListener("click",()=>show(ix.type==="signal"?"Signalized intersection":ix.type==="stop4"?"4-way stop":ix.type==="stop2"?"2-way stop":"Roundabout"));
+});
+
+// landmarks
+D.landmarks.forEach(m=>{
+  const g = el("g",{cursor:"pointer"},gLand);
+  el("rect",{x:m.x-m.w/2,y:m.y-m.h/2,width:m.w,height:m.h,fill:m.color,stroke:"#2E2E33","stroke-width":0.12,rx:0.25},g);
+  if (m.name==="PARK"){ el("ellipse",{cx:24.5,cy:50.6,rx:3.2,ry:2,fill:"#4A7A96"},g);
+    el("path",{d:`M 18 54 Q 26 46.5 35.5 49`,stroke:"#D9CBA3","stroke-width":0.5,fill:"none"},g); }
+  if (m.name==="PARKING LOT"){ for(let px=m.x-m.w/2+1.2; px<m.x+m.w/2-0.6; px+=1.5)
+      el("line",{x1:px,y1:m.y-m.h/2+0.4,x2:px,y2:m.y-m.h/2+2.2,stroke:"#D9D9D9","stroke-width":0.1},g); }
+  if (m.name.startsWith("GAS")){ el("rect",{x:m.x-3.2,y:m.y-1,width:1.1,height:2,fill:"#565A60"},g);
+    el("rect",{x:m.x+1.6,y:m.y-1,width:1.1,height:2,fill:"#565A60"},g); }
+  if (m.name==="COMMUNITY PLAZA"){ el("circle",{cx:m.x+2,cy:m.y,r:0.6,fill:"#F28C26"},g); }
+  const t = el("text",{x:m.x,y:m.y+(m.h>5?0.4:0.3),"font-size":m.w>8?1.15:0.95,fill:"#fff","text-anchor":"middle","font-weight":"600"},g,m.name);
+  const hit = el("rect",{x:m.x-m.w/2,y:m.y-m.h/2,width:m.w,height:m.h,fill:"transparent"},g);
+  hit.addEventListener("click",()=>show(m.name));
+  if (m.props && m.name==="SCHOOL"){ el("rect",{x:m.x-m.w/2,y:m.y+m.h/2,width:m.w,height:1.2,fill:"#D9CBA3",opacity:0.8},g); }
+});
+
+// zones (quiz etc)
+const hitMap = {};
+D.zones.forEach(z=>{
+  const g = el("g",{cursor:"pointer"},gZone);
+  if (z.kind==="park-pond"){ el("ellipse",{cx:24.5,cy:50.6,rx:3.2,ry:2,fill:"#4A7A96"},g); return; }
+  el("rect",{x:z.x,y:z.y,width:z.w,height:z.h,fill:"rgba(255,242,122,0.45)",stroke:"#E8C55A","stroke-width":0.08,rx:0.3},g);
+  const t = el("text",{x:z.x+z.w/2,y:z.y+z.h/2,"font-size":0.85,fill:"#5A4A00","text-anchor":"middle"},g,z.name.replace("Quiz: ","✎ "));
+  const key = z.name.replace("Quiz: ","");
+  hitMap[key] = () => show(key === "School Zone" ? "School Zone" :
+    key==="Roundabout approach" ? "Roundabout" : key==="Bike lane" ? "Avenue BIKE LANE" :
+    key==="Teen driver corridor" ? "Teen driver corridor" :
+    key==="Railroad crossing" ? "RAILROAD CROSSING" : key==="Bus stop" ? "BUS STOP" :
+    key==="Parking lot" ? "PARKING LOT" : key==="Gas forecourt" ? "GAS STATION" : key==="Plaza" ? "COMMUNITY PLAZA" : key);
+  g.addEventListener("click",()=>hitMap[key]());
+});
+
+// props
+D.props.forEach(p=>{
+  const g = el("g",{},gProp);
+  if (p.type==="trafficlight"){ el("rect",{x:p.x-0.18,y:p.y-0.3,width:0.36,height:0.6,fill:"#222",rx:0.08},g);
+    el("circle",{cx:p.x,cy:p.y-0.14,r:0.09,fill:"#E5533C"},g); el("circle",{cx:p.x,cy:p.y+0.14,r:0.09,fill:"#5FA653"},g); }
+  else if (p.type==="stopsign"){ el("circle",{cx:p.x,cy:p.y,r:0.28,fill:"#C0392B"},g);
+    el("text",{x:p.x,y:p.y+0.14,"font-size":0.3,fill:"#fff","text-anchor":"middle"},g,"S"); }
+  else if (p.type==="lamp"){ el("circle",{cx:p.x,cy:p.y,r:0.22,fill:"#FFE9A8",stroke:"#8a7a30","stroke-width":0.05},g); }
+  else if (p.type==="hydrant"){ el("rect",{x:p.x-0.14,y:p.y-0.16,width:0.28,height:0.32,fill:"#C0392B",rx:0.06},g); }
+  else if (p.type==="tree"){ el("circle",{cx:p.x,cy:p.y,r:0.55,fill:"#3E6B3B"},g); el("circle",{cx:p.x-0.15,cy:p.y-0.15,r:0.3,fill:"#4E7C4A"},g); }
+  else if (p.type==="bench"){ el("rect",{x:p.x-0.45,y:p.y-0.12,width:0.9,height:0.24,fill:"#8A6A3A",rx:0.06},g); }
+  else if (p.type==="busstop"){ el("rect",{x:p.x-0.5,y:p.y-0.3,width:1,height:0.6,fill:"#3F6FA3",rx:0.1},g);
+    el("text",{x:p.x,y:p.y+0.22,"font-size":0.45,fill:"#fff","text-anchor":"middle"},g,"BUS"); }
+  else if (p.type==="railroad-gate"){ el("rect",{x:p.x-0.1,y:p.y-2,width:0.2,height:4,fill:"#E8C55A"},g);
+    for(let yy=-1.6;yy<2;yy+=0.7) el("rect",{x:p.x-0.1,y:p.y+yy,width:0.2,height:0.3,fill:"#C0392B"},g); }
+  else if (p.type==="crossbuck"){ el("path",{d:`M ${p.x-0.4} ${p.y-0.4} l 0.8 0.8 M ${p.x+0.4} ${p.y-0.4} l -0.8 0.8`,stroke:"#fff","stroke-width":0.16},g); }
+});
+
+// npcs
+D.npcs.forEach(n=>{
+  const g = el("g",{cursor:"pointer"},gNpc);
+  el("circle",{cx:n.x,cy:n.y,r:0.7,fill:"#F28C26",stroke:"#7a430f","stroke-width":0.08},g);
+  el("text",{x:n.x,y:n.y-1,"font-size":0.8,fill:"#fff","text-anchor":"middle"},gLbl,n.name);
+  el("circle",{cx:n.x,cy:n.y,r:1.3,fill:"transparent"},g).addEventListener("click",()=>showNpc(n));
+});
+
+function show(name){
+  const key = L[name] ? name : (name.startsWith("HOUSE") ? "HOUSES" : name);
+  const l = L[key] || ["Lesson pending — pedagogy table covers this via its zone.","—","—","—"];
+  document.getElementById("info").innerHTML =
+    `<h3>${name}</h3><div>${l[0]}</div>
+     <div style="margin-top:6px"><span class="tag hook">${l[1]}</span><span class="tag">Grades ${l[2]}</span><span class="tag">bank: ${l[3]}</span></div>`;
+}
+function showNpc(n){ document.getElementById("info").innerHTML =
+  `<h3>${n.name} (NPC)</h3><div>${n.role}</div><div style="margin-top:6px"><span class="tag hook">Escort / dialog NPC</span></div>`; }
+
+// layer toggles
+const maps = {lyZones:gZone, lyProps:gProp, lyNpc:gNpc, lyLabels:gLbl};
+Object.keys(maps).forEach(id=>document.getElementById(id).addEventListener("change",e=>{
+  maps[id].style.display = e.target.checked ? "" : "none";
+}));
+
+// pan/zoom
+let drag=null;
+svg.addEventListener("wheel",e=>{ e.preventDefault();
+  const k = e.deltaY>0?1.12:0.9, mx=vb.x+e.offsetX/svg.clientWidth*vb.w, my=vb.y+e.offsetY/svg.clientHeight*vb.h;
+  vb.w=Math.min(200,Math.max(16,vb.w*k)); vb.h=vb.w*60/84;
+  vb.x=mx-(e.offsetX/svg.clientWidth)*vb.w; vb.y=my-(e.offsetY/svg.clientHeight)*vb.h; applyVB(); },{passive:false});
+svg.addEventListener("mousedown",e=>{drag={x:e.clientX,y:e.clientY,vx:vb.x,vy:vb.y};svg.classList.add("dragging");});
+window.addEventListener("mousemove",e=>{ if(!drag)return;
+  vb.x=drag.vx-(e.clientX-drag.x)*vb.w/svg.clientWidth; vb.y=drag.vy-(e.clientY-drag.y)*vb.h/svg.clientHeight; applyVB(); });
+window.addEventListener("mouseup",()=>{drag=null;svg.classList.remove("dragging");});
+
+document.getElementById("mapbox").appendChild(svg);
+</script>
+</body>
+</html>
