@@ -35,6 +35,7 @@ namespace SafeStreets
         public float FieldOfView = 360f;       // full circle by default (GGD); 60-140 = flashlight
         public float BaseViewDistance = 7f;    // GGD: baseViewDistance
         public int RecomputeEveryXFrame = 1;   // GGD: recomputeMeshEveryXFrame (1 = every frame = smooth)
+        public float OriginLerpSpeed = 14f;    // R6d: GGD computedOrigin smoothing
 
         [Header("Look")]
         public Color DimColor = new Color(0.02f, 0.04f, 0.08f, 0.62f);  // outside vision
@@ -43,6 +44,7 @@ namespace SafeStreets
         public bool Enabled2 { get; private set; } = true;
 
         private Transform _origin;
+        private Vector2 _smoothedOrigin;       // R6d: GGD computedOrigin
         private Mesh _fogMesh;                 // THE mesh: whole map minus vision polygon
         private MeshFilter _mf;
         private GameObject _fogGo;
@@ -64,6 +66,7 @@ namespace SafeStreets
             var player = GameObject.FindWithTag("Player");
             if (player == null) return;
             _origin = player.transform;
+            _smoothedOrigin = _origin.position;   // R6d: seed the smoothed origin
             _wallFilter = new ContactFilter2D
             {
                 useTriggers = false,       // GGD: walls block sight, trigger zones never do
@@ -95,10 +98,20 @@ namespace SafeStreets
             _frame++;
             if (_frame % RecomputeEveryXFrame != 0) return;
 
-            Vector2 center = _origin.position;
+            // R6d: GGD-style smoothed origin (computedOrigin) — kills per-frame micro-jitter.
+            float k = 1f - Mathf.Exp(-OriginLerpSpeed * Time.deltaTime);
+            _smoothedOrigin = Vector2.Lerp(_smoothedOrigin, _origin.position, k);
+
+            Vector2 center = _smoothedOrigin;
             float facing = FacingAngle();
             int rays = Mathf.Max(8, Accuracy);
             float half = FieldOfView >= 360f ? 180f : FieldOfView * 0.5f;
+
+            // R6d: in 360° mode the ring anchors to a FIXED world angle — a full circle
+            // has no facing. Anchoring to `facing` shifted every ray on each direction
+            // change, migrating hinges and making the silhouette "swim": THE original
+            // choppy/tweaky complaint (the old version recomputed the ring off facing
+            // every frame). Cone mode (60-140°) still tracks facing.
 
             // ---- ring: cast rays, collect the vision polygon boundary ----
             var ring = new List<Vector3>(rays + 8);
@@ -111,7 +124,7 @@ namespace SafeStreets
             {
                 float t = rays == 1 ? 0f : (float)i / (rays - 1);
                 float ang = FieldOfView >= 360f
-                    ? facing - 180f + 360f * (i / (float)rays)     // full circle, no duplicated seam ray
+                    ? -180f + 360f * (i / (float)rays)          // R6d: fixed world anchor — no swim
                     : (facing - half) + FieldOfView * t;
                 var dir = new Vector2(Mathf.Cos(ang * Mathf.Deg2Rad), Mathf.Sin(ang * Mathf.Deg2Rad));
 
