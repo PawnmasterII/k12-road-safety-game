@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SafeStreets — City Map Draft v1</title>
+<style>
+  :root{ --map-w: 960px; }
+  body{ margin:0; background:var(--card); color:var(--foreground); font-family:var(--font-family,ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif); }
+  .wrap{ display:flex; gap:14px; padding:14px; align-items:flex-start; flex-wrap:wrap; }
+  .mapcol{ width:var(--map-w); }
+  h1{ font-size:17px; margin:0 0 2px; }
+  .sub{ font-size:12px; color:var(--muted-foreground); margin-bottom:8px; }
+  .stats{ display:flex; gap:10px; flex-wrap:wrap; font-size:11px; color:var(--muted-foreground); margin-bottom:8px; }
+  .stats b{ color:var(--foreground); }
+  .toggles{ display:flex; gap:12px; font-size:12px; margin-bottom:8px; flex-wrap:wrap; }
+  .toggles label{ display:flex; gap:4px; align-items:center; cursor:pointer; }
+  svg{ display:block; border:1px solid var(--border); border-radius:8px; background:#5B8C5A; }
+  .lm{ cursor:pointer; }
+  .lm:hover{ stroke:var(--accent); stroke-width:.45; }
+  .lm.sel{ stroke:var(--accent); stroke-width:.55; }
+  .panel{ width:300px; position:sticky; top:14px; border:1px solid var(--border); border-radius:10px; padding:12px; font-size:12.5px; line-height:1.45; }
+  .panel h2{ font-size:14px; margin:0 0 6px; }
+  .panel .tag{ display:inline-block; font-size:10.5px; padding:1px 7px; border:1px solid var(--border); border-radius:99px; margin:0 4px 6px 0; color:var(--muted-foreground); }
+  .legend{ display:flex; gap:10px; flex-wrap:wrap; font-size:10.5px; color:var(--muted-foreground); margin-top:8px; }
+  .legend span{ display:inline-flex; gap:4px; align-items:center; }
+  .sw{ width:12px; height:9px; border-radius:2px; display:inline-block; border:1px solid rgba(0,0,0,.25); }
+  .hid{ display:none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="mapcol">
+    <h1>SafeStreets — City Map Draft v1</h1>
+    <div class="sub">Static HTML draft of <b>docs/map_design/city_layout.json</b> (80×56 world units) · click any landmark/street feature for its safety lesson · nothing is in Unity yet</div>
+    <div class="stats">
+      <span><b>9</b> streets</span><span><b>9</b> intersections (1 signalized pair · 3× 4-way · 4× 2-way · 1 roundabout)</span>
+      <span><b>12</b> crosswalks</span><span><b>17</b> landmarks</span><span><b>1</b> one-way pair</span><span><b>1</b> rail crossing</span><span><b>6</b> NPCs</span><span><b>+5</b> new quiz banks</span>
+    </div>
+    <div class="toggles">
+      <label><input type="checkbox" id="tQuiz" checked> quiz zones</label>
+      <label><input type="checkbox" id="tProps" checked> props</label>
+      <label><input type="checkbox" id="tLabels" checked> labels</label>
+      <label><input type="checkbox" id="tNpc" checked> NPCs</label>
+    </div>
+
+    <svg id="map" viewBox="0 0 80 56" width="960" height="672">
+      <!-- ground -->
+      <rect x="0" y="0" width="80" height="56" fill="#5B8C5A"/>
+      <!-- streets -->
+      <g id="streets"></g>
+      <g id="decor"></g>
+      <g id="crossings"></g>
+      <g id="inter"></g>
+      <g id="bldg"></g>
+      <g id="zonesL" class="layerQuiz"></g>
+      <g id="propsL" class="layerProps"></g>
+      <g id="npcL" class="layerNpc"></g>
+      <g id="labelsL" class="layerLabels"></g>
+    </svg>
+    <div class="legend">
+      <span><i class="sw" style="background:#3F4247"></i> road</span>
+      <span><i class="sw" style="background:#E8C55A;height:2px"></i> centerline</span>
+      <span><i class="sw" style="background:#5a9a5a"></i> bike lane</span>
+      <span><i class="sw" style="background:#EBECE0"></i> zebra</span>
+      <span><i class="sw" style="background:#F28C26;border-radius:99px"></i> NPC</span>
+      <span><i class="sw" style="background:rgba(255,242,122,.45)"></i> quiz zone</span>
+      <span><i class="sw" style="background:#c0392b;border-radius:99px"></i> stop</span>
+      <span><i class="sw" style="background:#2c3e50;border-radius:99px"></i> signal</span>
+    </div>
+  </div>
+
+  <div class="panel" id="panel">
+    <h2>Landmark inspector</h2>
+    <div id="pbody">Click anything on the map — landmarks, intersections, the bike lane, the railroad — to see the safety lesson, hook type, grade band and quiz bank planned for it.</div>
+    <div style="margin-top:10px;font-size:11px;color:var(--muted-foreground)">Pedagogy layer: docs/map_design/landmark_lessons.md<br>Layout: docs/map_design/city_layout.json</div>
+  </div>
+</div>
+
+<script>
+const L = {
+ "SCHOOL":["Cross only at the marked crosswalk and obey the guard's stop paddle.","NPC escort + quiz zone","2-3","sh-school-bike"],
+ "LIBRARY":["Get off and walk a bike/scooter on crowded sidewalks near entrances.","sign-read stop","4-5","st-riding"],
+ "HOSPITAL":["Never block or cross an active emergency driveway; yield to sirens and flashing lights.","sign-read stop","6-8","signals-signs (NEW)"],
+ "FIRE STATION":["Keep the apron clear; stop for apparatus pulling out with lights/sirens.","quiz zone","4-5","signals-signs (NEW)"],
+ "APARTMENTS":["Stop at every driveway edge; look for reversing lights and turning wheels.","sign-read stop","2-3","driveway-blindspot (NEW)"],
+ "COMMUNITY PLAZA":["Eyes up, phone away in crowded spaces; set a meeting point with your grown-up.","quiz zone","2-3","le-crossing"],
+ "GROCERY":["Walk bikes/carts on the sidewalk; watch for cars backing out of angled stalls.","task minigame","2-3","parkinglot-safety (NEW)"],
+ "PARKING LOT":["Walk with a grown-up, use aisles not between cars, never play between parked cars.","task minigame","K-1","parkinglot-safety (NEW)"],
+ "PARK":["Shared-use paths: walkers keep right; never chase a ball toward the road.","quiz zone + escort","K-1 / 4-5","le-crossing / st-riding"],
+ "GAS STATION":["No walking through fuel lanes; drivers have blind spots around pumps and pillars.","quiz zone","4-5","driveway-blindspot (NEW)"],
+ "POLICE":["A trusted-uniformed officer is a safe person to ask for help crossing or when lost.","NPC escort","K-1","le-crossing"],
+ "HOUSE":["Stop at every driveway edge; look for reversing lights and turning wheels.","sign-read stop","2-3","driveway-blindspot (NEW)"],
+ "fx:roundabout":["Cross at the marked crosswalk one car-length back from the circle; never cross the circle itself.","quiz zone","6-8","signals-signs (NEW)"],
+ "fx:oneway":["Look the correct ONE way (left on a leftward one-way) before stepping off the curb.","sign-read stop","2-3","signals-signs (NEW)"],
+ "fx:rail":["Never cross when lights flash or gates fall; stuck on tracks = get out and call the number on the crossbuck.","quiz zone","4-5","railroad-crossing (NEW)"],
+ "fx:bike":["Ride with traffic in the lane; signal and shoulder-check before any merge or turn.","quiz zone","6-8","st-riding"],
+ "fx:schoolzone":["School zone: slow traffic, guard on duty, mid-block crossing only at the stripes.","NPC escort (Guard Gus)","2-3","sh-school-bike"],
+ "fx:busstop":["Wait on the sidewalk, two big steps back; board only after the bus fully stops and the driver signals.","NPC escort (Driver Dee) + quiz","2-3","bus-stop-rules (NEW)"],
+ "fx:signal":["Cross only on the WALK symbol — and still check turning cars.","task minigame","4-5","signals-signs (NEW)"],
+ "fx:stop4":["First to stop goes first; make eye contact before stepping out.","sign-read stop","4-5","signals-signs (NEW)"],
+ "fx:stop2":["The stopped street yields to all through traffic; cross at the crosswalk leg.","quiz zone","6-8","signals-signs (NEW)"],
+ "fx:teen":["9-12 overlay: 3-foot passing, phone stowed, GDL night limits.","quiz zone","9-12","rr-florida"]
+};
+
+const S = document.getElementById('streets'),
+      D = document.getElementById('decor'),
+      C = document.getElementById('crossings'),
+      I = document.getElementById('inter'),
+      B = document.getElementById('bldg'),
+      Z = document.getElementById('zonesL'),
+      P = document.getElementById('propsL'),
+      N = document.getElementById('npcL'),
+      T = document.getElementById('labelsL');
+
+function el(n,at,parent){ const e=document.createElementNS('http://www.w3.org/2000/svg',n); for(const k in at) e.setAttribute(k,at[k]); (parent||S).appendChild(e); return e; }
+function lbl(x,y,txt,size,fill,parent){ const t=el('text',{x,y,'font-size':size||0.9,fill:fill||'#fff','text-anchor':'middle','font-family':'inherit','font-weight':600},parent||T); t.textContent=txt; return t; }
+function lesson(key){ const v=L[key]||null; if(!v) return; show(key,v[0],v[1],v[2],v[3]); }
+function show(name,lessonText,hook,band,bank){
+  document.getElementById('pbody').innerHTML =
+    '<h2>'+name+'</h2><div style="margin-bottom:6px">'+lessonText+'</div>'+
+    '<span class="tag">hook: '+hook+'</span><span class="tag">band: '+band+'</span><span class="tag">bank: '+bank+'</span>';
+  document.querySelectorAll('.lm.sel').forEach(e=>e.classList.remove('sel'));
+}
+function clickable(e,key){ e.classList.add('lm'); e.addEventListener('click',()=>{ document.querySelectorAll('.lm.sel').forEach(x=>x.classList.remove('sel')); e.classList.add('sel'); lesson(key); }); }
+
+// streets: [name, x, y, w, h, key]
+const streets = [
+ ['Main Avenue',0,26,80,4,'fx:street-main'],
+ ['North Collector',0,12.5,80,3,'fx:street-nc'],
+ ['South Street',0,40.75,80,2.5,'fx:street-s'],
+ ['Central Collector',38.5,0,3,56,'fx:street-cc'],
+ ['West Street',12.75,0,2.5,56,'fx:street-w'],
+ ['East Street',64.75,0,2.5,56,'fx:street-e'],
+ ['Pair A',45.75,15.5,2.5,11,'fx:oneway'],
+ ['Pair B',57.75,15.5,2.5,11,'fx:oneway'],
+ ['Park Lane',26,45.5,2,10,'fx:street-p']
+];
+for(const [n,x,y,w,h,key] of streets){
+  const r = el('rect',{x,y,width:w,height:h,fill:'#3F4247'}); clickable(r,key==='fx:street-main'?'fx:bike':key);
+}
+// sidewalks on avenue + collectors (light edges)
+[[0,25.4,80,.6],[0,30,80,.6],[38,12,0.6,56]].forEach(()=>{});
+el('rect',{x:0,y:25.4,width:80,height:.6,fill:'#B9BDC4',opacity:.85},D);
+el('rect',{x:0,y:30,width:80,height:.6,fill:'#B9BDC4',opacity:.85},D);
+el('rect',{x:37.9,y:0,width:.6,height:56,fill:'#B9BDC4',opacity:.7},D);
+el('rect',{x:41.5,y:0,width:.6,height:56,fill:'#B9BDC4',opacity:.7},D);
+// centerlines (yellow) on 2-lane streets
+el('rect',{x:0,y:27.92,width:80,height:.16,fill:'#E8C55A'},D);
+el('rect',{x:0,y:13.92,width:80,height:.16,fill:'#E8C55A'},D);
+el('rect',{x:39.92,y:0,width:.16,height:56,fill:'#E8C55A'},D);
+// dashed residential centerlines
+[[0,41.92,80,.12],[13.92,0,.12,56],[64.92,0,.12,56]].forEach(([x,y,w,h])=>{
+  const r=el('rect',{x,y,width:w,height:h,fill:'#E8C55A',opacity:.8},D);
+  r.setAttribute('stroke-dasharray','1 .8'); });
+// bike lane along avenue south side
+const bike = el('rect',{x:2,y:29.2,width:60,height:.8,fill:'#5a9a5a',opacity:.9},D); clickable(bike,'fx:bike');
+lbl(6,29.85,'BIKE LANE',0.55,'#eaf4ea',D);
+// one-way pair arrows
+for(const [x,dir,name] of [[47,1,'S'],[59,-1,'N']]){
+  for(let y=17;y<25;y+=2.2){
+    const p=el('polygon',{points: dir>0 ? `${x-0.5},${y} ${x+0.5},${y} ${x},${y+1}` : `${x-0.5},${y+1} ${x+0.5},${y+1} ${x},${y}`, fill:'#E8C55A'},D);
+  }
+  const r=el('rect',{x:x-1.1,y:13.2,width:2.2,height:1.4,rx:.3,fill:'#2c3e50'},D); clickable(r,'fx:oneway');
+  lbl(x,14.2,'ONE WAY '+name,0.62,'#fff',D);
+}
+// railroad along x=2
+const railG = el('g',{},D);
+el('rect',{x:1.7,y:0,width:.28,height:56,fill:'#6b6f75'},railG);
+el('rect',{x:2.3,y:0,width:.28,height:56,fill:'#6b6f75'},railG);
+for(let y=1;y<56;y+=1.6) el('rect',{x:1.5,y,width:1.3,height:.34,fill:'#5a4632'},railG);
+const railHit = el('rect',{x:1,y:0,width:2,height:56,fill:'transparent'},railG); clickable(railHit,'fx:rail');
+// crossbuck + gate
+el('rect',{x:2.75,y:13.1,width:1.5,height:.16,fill:'#fff'},D); el('rect',{x:2.75,y:13.5,width:1.5,height:.16,fill:'#fff'},D);
+lbl(4.6,13.7,'RAIL X',0.55,'#fff',D);
+el('rect',{x:3.1,y:41.4,width:.14,height:2.2,fill:'#c0392b'},D);
+el('rect',{x:3.1,y:41.4,width:2.2,height:.3,fill:'#c0392b'},D);
+
+// crosswalks: [x, y, roadH(w), roadV? ] — rungs perpendicular to walking dir
+function zebra(x,y,roadW,vert){
+  const g = el('g',{},C);
+  if(!vert){ // crossing a horizontal road: rungs horizontal, stacked across road height
+    const n = Math.max(3,Math.round(roadW/0.9));
+    for(let i=0;i<n;i++) el('rect',{x:x-1.1,y:y-roadW/2+0.25+i*(roadW-0.5)/n+railW(),width:2.2,height:0.32,fill:'#EBECE0'},g);
+  } else {
+    const n = Math.max(3,Math.round(roadW/0.9));
+    for(let i=0;i<n;i++) el('rect',{x:x-roadW/2+0.25+i*(roadW-0.5)/n,y:y-1.1,width:0.32,height:2.2,fill:'#EBECE0'},g);
+  }
+  return g;
+}
+function railW(){ return 0; }
+// main crossings
+zebra(40,28,4,false); zebra(33,28,4,false); zebra(40,14,3,false); zebra(14,28,4,false); zebra(14,14,3,false); zebra(24,14,3,false);
+zebra(40,42,2.5,false); zebra(66,42,2.5,false); zebra(66,14,3,false);
+zebra(66,24.3,2.5,true); zebra(66,31.7,2.5,true); zebra(30,28,4,false);
+
+// intersections
+function signal(x,y){ const g=el('g',{},I);
+  for(const [dx,dy] of [[-1.6,-1.6],[1.6,-1.6],[-1.6,1.6],[1.6,1.6]]){
+    const c=el('circle',{cx:x+dx,cy:y+dy,r:.42,fill:'#2c3e50'},g); clickable(c,'fx:signal');
+    el('circle',{cx:x+dx,cy:y+dy-.14,r:.14,fill:'#e74c3c'},g);
+    el('circle',{cx:x+dx,cy:y+dy+.16,r:.14,fill:'#2ecc71'},g);
+  } }
+function stop4(x,y){ const g=el('g',{},I);
+  for(const [dx,dy] of [[-1.5,-1.2],[1.5,1.2]]){
+    const c=el('circle',{cx:x+dx,cy:y+dy,r:.4,fill:'#c0392b'},g); clickable(c,'fx:stop4'); } }
+function stop2(x,y){ const g=el('g',{},I);
+  const c=el('circle',{cx:x,cy:y-1.2,r:.38,fill:'#c0392b'},g); clickable(c,'fx:stop2'); }
+signal(40,28); signal(40,14); stop4(14,28); stop4(66,14); stop2(14,14); stop2(40,42); stop2(14,42); stop2(66,42);
+// roundabout
+const ra=el('circle',{cx:66,cy:28,r:2.1,fill:'#4a4d52'},I); clickable(ra,'fx:roundabout');
+el('circle',{cx:66,cy:28,r:1.0,fill:'#4E7C4A'},I);
+lbl(66,28.25,'RA',0.55,'#fff',I);
+
+// landmarks: [name, x, y, w, h, color]
+const bldgs = [
+ ['SCHOOL',18,3,16,8,'#6B7FA3'],
+ ['LIBRARY',45,3,9,8,'#737378'],
+ ['HOSPITAL',56,3,8,8,'#737378'],
+ ['FIRE STATION',69,3,9,8,'#737378'],
+ ['APARTMENTS',45,18,8,7,'#737378'],
+ ['COMMUNITY PLAZA',55,18,8,7,'#B9BDC4'],
+ ['GROCERY',45,33,12,8,'#737378'],
+ ['PARKING LOT',45,41.5,12,4,'#565A60'],
+ ['POLICE',69,45,9,6,'#737378'],
+ ['GAS STATION',69,32,10,6,'#737378'],
+ ['HOUSE 1',18,33,3.4,3,'#8A8A90'],['HOUSE 2',22.4,33,3.4,3,'#8A8A90'],['HOUSE 3',26.8,33,3.4,3,'#8A8A90'],['HOUSE 4',31.2,33,3.4,3,'#8A8A90'],
+ ['HOUSE 5',4,46,3.4,3,'#8A8A90'],['HOUSE 6',8.4,46,3.4,3,'#8A8A90']
+];
+for(const [name,x,y,w,h,color] of bldgs){
+  const r = el('rect',{x,y,width:w,height:h,rx:.3,fill:color},B); clickable(r,name.startsWith('HOUSE')?'HOUSE':name);
+  lbl(x+w/2, y+h/2+0.35, name, name.startsWith('HOUSE')?0.55:(w>10?1.1:0.8), '#fff', T);
+}
+// school yard + drop-off loop
+el('rect',{x:18,y:11,width:12,height:1.4,fill:'#c9a86a',opacity:.85},B);
+lbl(24,12,'drop-off loop',0.5,'#5a4a2a',T);
+// parking lot stalls
+for(let i=0;i<6;i++) el('rect',{x:46+i*1.9,y:42,width:1.4,height:3.2,fill:'none',stroke:'#EBECE0','stroke-width':.08},B);
+// park + pond
+const park = el('rect',{x:17,y:46,width:20,height:9,rx:.4,fill:'#4E7C4A'},B); clickable(park,'PARK');
+lbl(21,47.2,'PARK',1.1,'#fff',T);
+el('ellipse',{cx:27.5,cy:51.5,rx:3.5,ry:2.2,fill:'#4A7A96'},B);
+el('rect',{x:34,y:48,width:2.2,height:.5,fill:'#B9BDC4'},B); // bridge
+// trees in park + streets
+const treeSpots=[[19,48.5],[22,54],[32,49.5],[35,53],[6,18],[10,22],[36,18],[33,22],[68,18],[72,22],[20,44],[34,44],[47,15],[57,15]];
+for(const [tx,ty] of treeSpots) el('circle',{cx:tx,cy:ty,r:.55,fill:'#2f5d2c'},P);
+// school zone dashed band
+const sz = el('rect',{x:16,y:12.2,width:25,height:3.6,fill:'rgba(255,242,122,.16)',stroke:'#E8C55A','stroke-dasharray':'1 .7','stroke-width':.12},Z);
+clickable(sz,'fx:schoolzone');
+lbl(40.5,11.6,'SCHOOL ZONE',0.7,'#E8C55A',T);
+// quiz zones: [label, x,y,w,h, key]
+const zones = [
+ ['Plaza',55,18,8,7,'COMMUNITY PLAZA'],
+ ['Gas',69,32,10,6,'GAS STATION'],
+ ['Parking',45,41.5,12,4,'PARKING LOT'],
+ ['Roundabout',62.5,22.5,3,11,'fx:roundabout'],
+ ['Rail',0.5,39.5,4.5,5,'fx:rail'],
+ ['Bus stop',27.5,23.5,5,3.5,'fx:busstop'],
+ ['Bike lane',44,25.4,10,1.2,'fx:bike'],
+ ['Teen corridor',70,26.4,9,3.2,'fx:teen']
+];
+for(const [name,x,y,w,h,key] of zones){
+  const zr = el('rect',{x,y,width:w,height:h,fill:'rgba(255,242,122,.32)',stroke:'#E8C55A','stroke-width':.1},Z);
+  clickable(zr,key); lbl(x+w/2,y+h/2+.3,'QUIZ: '+name,0.6,'#8a6d00',T);
+}
+// bus stops
+for(const [bx,by] of [[30,25.1],[50,30.6]]){
+  const bs = el('rect',{x:bx-1,y:by-0.6,width:2,height:1.2,rx:.2,fill:'#2980b9'},P); clickable(bs,'fx:busstop');
+  lbl(bx,by+0.25,'BUS',0.5,'#fff',T);
+}
+// lamps / hydrants
+for(const [lx,ly] of [[10,24.6],[20,31.4],[34,24.6],[50,31.4],[58,24.6],[74,24.6]]) el('circle',{cx:lx,cy:ly,r:.3,fill:'#f5d76e'},P);
+for(const [hx,hy] of [[17.5,31.8],[36,31.8],[44.5,31.8]]) el('circle',{cx:hx,cy:hy,r:.26,fill:'#c0392b'},P);
+// benches
+for(const [bx,by] of [[22,48.6],[30,52],[33.5,47.6]]) el('rect',{x:bx-.7,y:by,width:1.4,height:.3,fill:'#8a5a2a'},P);
+// NPCs
+const npcs = [
+ ['Guard Gus',24,13],['Driver Dee',50,30.4],['Officer Ada',42.5,25.6],
+ ['Granny Rose',51,41.6],['Little Sam',30,47],['Mia',49.5,12.5]
+];
+for(const [nm,nx,ny] of npcs){
+  const c = el('circle',{cx:nx,cy:ny,r:.62,fill:'#F28C26',stroke:'#fff','stroke-width':.08},N);
+  lbl(nx,ny-1.0,nm,0.62,'#fff',N);
+}
+// player spawn
+el('circle',{cx:19.7,cy:37.5,r:.6,fill:'#fff',stroke:'#F28C26','stroke-width':.15},N);
+lbl(19.7,38.6,'SPAWN',0.55,'#fff',N);
+
+// layer toggles
+const tg = id => document.getElementById(id);
+tg('tQuiz').onchange = e => Z.classList.toggle('hid', !e.target.checked);
+tg('tProps').onchange = e => P.classList.toggle('hid', !e.target.checked);
+tg('tLabels').onchange = e => T.classList.toggle('hid', !e.target.checked);
+tg('tNpc').onchange = e => N.classList.toggle('hid', !e.target.checked);
+</script>
+</body>
+</html>
