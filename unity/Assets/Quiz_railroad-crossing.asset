@@ -1,0 +1,51 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 0}
+  m_Name: Quiz_railroad-crossing
+  m_EditorClassIdentifier: Assembly-CSharp:SafeStreets:QuizBank
+  activityId: railroad-crossing
+  title: Railroad Crossings
+  questions:
+  - kind: 1
+    prompt: The crossing lights are flashing but the gate is still going down. What
+      do you do?
+    trueIsCorrect: 0
+    choices:
+    - Stop and wait - never cross when lights flash
+    - Hurry across before the gate falls
+    - Duck under the gate quickly
+    - Cross if no train is visible yet
+    correctIndex: 0
+    source: 'Guide, Grades 4-5: never cross railroad tracks when lights flash or
+      gates are moving'
+  - kind: 1
+    prompt: Your bike gets stuck on the tracks and a train is coming. What first?
+    trueIsCorrect: 0
+    choices:
+    - Leave the bike, get off the tracks, then call for help
+    - Stay and keep pulling the bike
+    - Lie down between the rails
+    - Run toward the train waving
+    correctIndex: 0
+    source: 'Guide, Grades 4-5: if stuck on tracks, leave belongings and get clear
+      immediately'
+  - kind: 1
+    prompt: Where do you stand while waiting for a train to pass?
+    trueIsCorrect: 0
+    choices:
+    - Well behind the gate and the stop line
+    - Right next to the rails to see better
+    - Between the gate and the tracks
+    - On the tracks if the gate is up
+    correctIndex: 0
+    source: 'Guide, Grades 4-5: wait behind gates and stop lines until lights stop
+      and gates fully rise'

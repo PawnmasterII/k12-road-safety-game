@@ -1,0 +1,49 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 0}
+  m_Name: Quiz_bus-stop-rules
+  m_EditorClassIdentifier: Assembly-CSharp:SafeStreets:QuizBank
+  activityId: bus-stop-rules
+  title: Bus Stop Rules
+  questions:
+  - kind: 1
+    prompt: Where do you wait for the bus?
+    trueIsCorrect: 0
+    choices:
+    - On the sidewalk, two big steps back from the curb
+    - Right at the curb edge
+    - In the street so the driver sees you
+    - Behind the shelter where nobody sees you
+    correctIndex: 0
+    source: 'Guide, Grades 2-3: wait on the sidewalk away from the curb until the
+      bus fully stops'
+  - kind: 1
+    prompt: When is it safe to walk to the bus door?
+    trueIsCorrect: 0
+    choices:
+    - After the bus fully stops and the driver signals you
+    - While it is still rolling up
+    - As soon as you see it coming
+    - When your friend runs first
+    correctIndex: 0
+    source: 'Guide, Grades 2-3: board only after the bus stops and the driver signals'
+  - kind: 1
+    prompt: You drop your backpack in the bus danger zone. What do you do?
+    trueIsCorrect: 0
+    choices:
+    - Tell the bus driver instead of picking it up
+    - Dive under the bus to grab it
+    - Have a friend crawl in for it
+    - Wait under the bus until it leaves
+    correctIndex: 0
+    source: 'Guide, Grades 2-3: if an item falls near the bus, tell the driver instead
+      of retrieving it'
