@@ -88,9 +88,10 @@ namespace SafeStreets
             }
             if (_pc == null) _pc = _player.GetComponent<PlayerController2D>();
 
-            // R4/R5: SPACE swallowed by a modal that closed this frame/last frame, or
-            // the Editor window is unfocused — stray physical keys never drive the game.
-            if (!ModalInputGate.InputAllowed) return;
+            // R4/R5: input ACTIONS are gated (swallow window / unfocused editor), but
+            // hint TRACKING always runs — a gated return here froze the prompt at a
+            // stale position (vision-pass finding).
+            bool inputAllowed = ModalInputGate.InputAllowed;
 
             // Feature 002: an open quiz (or dialog) owns input — nothing else routes
             // Spec 004: an open minigame owns input first of all
@@ -101,7 +102,7 @@ namespace SafeStreets
             if (Open != null)
             {
                 UpdateHint(null, null);
-                if (Input.GetKeyDown(KeyCode.Space)) Close();
+                if (inputAllowed && Input.GetKeyDown(KeyCode.Space)) Close();
                 return;
             }
 
@@ -110,7 +111,7 @@ namespace SafeStreets
             if (quizZone != null)
             {
                 UpdateHint(quizZone.transform, "Press SPACE for the quiz");
-                if (Input.GetKeyDown(KeyCode.Space)) quizZone.StartQuiz();
+                if (inputAllowed && Input.GetKeyDown(KeyCode.Space)) quizZone.StartQuiz();
                 return;
             }
 
@@ -118,7 +119,7 @@ namespace SafeStreets
             if (crossNpc != null)
             {
                 UpdateHint(crossNpc.transform, "Press SPACE to talk");
-                if (Input.GetKeyDown(KeyCode.Space)) crossNpc.Talk();
+                if (inputAllowed && Input.GetKeyDown(KeyCode.Space)) crossNpc.Talk();
                 return;
             }
 
@@ -126,7 +127,7 @@ namespace SafeStreets
             if (talkNpc != null)
             {
                 UpdateHint(talkNpc.transform, "Press SPACE to talk");
-                if (Input.GetKeyDown(KeyCode.Space)) talkNpc.StartDialogue();
+                if (inputAllowed && Input.GetKeyDown(KeyCode.Space)) talkNpc.StartDialogue();
                 return;
             }
 
@@ -136,7 +137,7 @@ namespace SafeStreets
                 // Spec 004: buildings with a minigame open it; others show the info popup
                 UpdateHint(Candidate.transform,
                     Candidate.TaskGame != null ? "Press SPACE to start the task" : "Press SPACE");
-                if (Input.GetKeyDown(KeyCode.Space))
+                if (inputAllowed && Input.GetKeyDown(KeyCode.Space))
                 {
                     if (Candidate.TaskGame != null) Candidate.TaskGame.Open();
                     else OpenUp(Candidate);
@@ -332,14 +333,29 @@ namespace SafeStreets
             if (_hint == null)
             {
                 _hint = new GameObject("InteractHint");
+                // R5 vision pass: dark chip behind the text so the yellow prompt stays
+                // readable over the cream zebra stripes (was raw yellow-on-stripes).
+                var chip = new GameObject("Chip");
+                chip.transform.SetParent(_hint.transform, false);
+                var csr = chip.AddComponent<SpriteRenderer>();
+                csr.sprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 4, 4),
+                    new Vector2(0.5f, 0.5f), 1f, 0, SpriteMeshType.FullRect);
+                csr.color = new Color(0.05f, 0.08f, 0.13f, 0.82f);
+                csr.sortingOrder = 29;
+                // white texture is 4x4 UNITS at PPU 1 → scale = desired/4
+                // 3.8 world units: text is ~3.2 wide, vision measured ~25px overhang per side
+                chip.transform.localScale = new Vector3(0.95f, 0.105f, 1f);   // 3.8 x 0.42 world
                 var tm = _hint.AddComponent<TextMesh>();
                 DialogStyle.Style(tm, 0.14f, 28, TextAnchor.MiddleCenter,
                     new Color(1f, 0.95f, 0.6f), 30);
-                _hint.GetComponent<MeshRenderer>().sortingLayerName = "Decor";
+                var r = _hint.GetComponent<MeshRenderer>();
+                r.sortingOrder = 30;   // was sortingLayerName "Decor" — layer doesn't exist, silent fallback
             }
             _hint.GetComponent<TextMesh>().text = text;
             _hint.SetActive(true);
-            _hint.transform.position = target.position + new Vector3(0f, 0.8f, -3f);
+            // 1.15 clears the NPC nameplate (+0.65 + text height) — the chip must
+            // never overlap the name label or the sprite top (vision-pass finding).
+            _hint.transform.position = target.position + new Vector3(0f, 1.15f, -3f);
         }
 
         // ---- the "Interaction" popup ----

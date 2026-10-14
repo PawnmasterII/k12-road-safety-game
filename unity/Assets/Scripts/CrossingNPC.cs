@@ -195,7 +195,11 @@ namespace SafeStreets
             {
                 var go = new GameObject(npcName + "_Toast");
                 go.transform.SetParent(transform);
-                go.transform.localPosition = new Vector3(0f, 0.85f, -3f);
+                // Vision-pass fix: normalize the world offset against the NPC root's
+                // lossy scale (same detachment bug as the name label).
+                var lossy = transform.lossyScale;
+                go.transform.localPosition = new Vector3(
+                    0f, 0.85f / Mathf.Max(0.0001f, lossy.y), -3f);
                 _toast = go.AddComponent<TextMesh>();
                 DialogStyle.Style(_toast, 0.11f, 26, TextAnchor.MiddleCenter,
                     new Color(1f, 0.62f, 0.35f), 30);
