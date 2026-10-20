@@ -28,7 +28,14 @@ export async function api(method, path, body = null) {
     data = {};
   }
   if (!res.ok) {
-    const err = new Error(data.detail || "Something went wrong. Try again!");
+    // detail can be a string (HTTPException) OR an object/array (FastAPI 422
+    // validation errors) — putting a non-string in new Error() renders
+    // "[object Object]" to kids. Stringify any non-string detail.
+    const raw = data.detail;
+    const detail = typeof raw === "string"
+      ? raw
+      : (raw == null ? "" : JSON.stringify(raw));
+    const err = new Error(detail || "Something went wrong. Try again!");
     err.status = res.status;
     throw err;
   }

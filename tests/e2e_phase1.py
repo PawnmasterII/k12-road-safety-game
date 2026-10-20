@@ -1,9 +1,13 @@
 """E2E phase 1 (fresh DB required): US4 cards, US2 signup, US3 activity loop,
-logout, wrong-PIN. Run e2e_phase2.py AFTER restarting the backend."""
+logout, wrong-PIN. Run e2e_phase2.py AFTER restarting the backend.
+
+Override the frontend with E2E_FRONT (e.g. an isolated preflight server) —
+defaults to the documented dev port."""
+import os
 import sys
 from playwright.sync_api import sync_playwright, expect
 
-FRONT = "http://localhost:5173"
+FRONT = os.environ.get("E2E_FRONT", "http://localhost:5173")
 NAME = "Ella<script>alert(1)</script>"
 SCHOOL = "Sunshine Elementary"
 PIN = "1234"
@@ -41,7 +45,9 @@ with sync_playwright() as p:
         check(f"grade band {band}", lambda b=band: expect(page.locator(".module-card .band", has_text=f"Grades {b}")).to_be_visible())
 
     print("US2: signup -> personalized dashboard")
+    page.get_by_role("link", name="Log in or make an account").click()
     page.get_by_role("link", name="Make your account").click()
+    page.wait_for_timeout(1200)  # let the fresh page's initial effects settle before filling
     page.get_by_placeholder("Your first name").fill(NAME)
     page.get_by_placeholder("How old are you?").fill("7")
     page.get_by_placeholder("Your school's name").fill(SCHOOL)
@@ -82,7 +88,7 @@ with sync_playwright() as p:
     print("US1: logout -> wrong PIN rejected")
     page.get_by_role("button", name="Log out").click()
     expect(page.get_by_role("heading", name="Safe Travelers Club")).to_be_visible()
-    page.get_by_role("link", name="I already have one").click()
+    page.get_by_role("link", name="Log in or make an account").click()
     page.get_by_placeholder("Your first name").fill(NAME)
     page.get_by_placeholder("Your school's name").fill(SCHOOL)
     page.get_by_placeholder("4 numbers").fill("9999")

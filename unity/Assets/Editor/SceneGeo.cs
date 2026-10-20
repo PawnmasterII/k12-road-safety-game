@@ -226,7 +226,7 @@ namespace SafeStreets.EditorTools
             hudGo.AddComponent<SafeStreets.HudAnchor>();
             var qm = SafeStreets.QuestManager.Find();
             qm.RegisterHud(hud, quest);
-            SafeStreets.WinBanner.Create(root.transform, hud);   // self-subscribes at play start
+            SafeStreets.WinBanner.Create(root.transform);   // self-subscribes at play start
 
             EditorSceneManager.SaveScene(scene, "Assets/Scenes/SafeStreets.unity");
             return $"geo scene built, roots={scene.rootCount}";
@@ -357,8 +357,15 @@ namespace SafeStreets.EditorTools
             tm.text = label;
         }
 
-        private static void MakeNpc(GameObject parent, string name, Color color, Vector3 pos,
-            SafeStreets.Conversation conv, bool wantsCrossing = false)
+        /// <summary>
+        /// Demo polish: the city cast. `conv` is now OPTIONAL but a DialogNPC with no
+        /// conversation is a silent collider — CityContent supplies every script, and a
+        /// missing one here is a build-time warning instead of a dead SPACE press.
+        /// `wantsCrossing` builds a CrossingNPC (escort) instead of a DialogNPC.
+        /// </summary>
+        private static GameObject MakeNpc(GameObject parent, string name, Color color, Vector3 pos,
+            SafeStreets.Conversation conv, bool wantsCrossing = false,
+            SafeStreets.CrossingZone crossing = null, string[] scriptLines = null, string scriptTip = null)
         {
             var go = new GameObject("NPC_" + name);
             go.transform.SetParent(parent.transform);
@@ -379,12 +386,21 @@ namespace SafeStreets.EditorTools
             {
                 var c = go.AddComponent<SafeStreets.CrossingNPC>();
                 c.npcName = name;
+                c.boundCrossing = crossing;
+                if (scriptLines != null && scriptLines.Length > 0)
+                {
+                    c.scriptLines = scriptLines;
+                    c.scriptTip = scriptTip;
+                }
                 go.AddComponent<SafeStreets.FogEntity>();   // R4: fades in/out with vision (GGD)
             }
             else
             {
+                if (conv == null)
+                    Debug.LogWarning($"[CityBuilder2D] NPC '{name}' has no conversation — " +
+                                     "it will be a silent collider. Check CityContent.All().");
                 var npc = go.AddComponent<SafeStreets.DialogNPC>();
-                npc.conversation = conv;
+                if (conv != null) npc.conversation = conv;
                 npc.interactLabel = name;
                 go.AddComponent<SafeStreets.FogEntity>();   // R4: fades in/out with vision (GGD)
             }
@@ -401,6 +417,7 @@ namespace SafeStreets.EditorTools
             var tm = labelGo.AddComponent<TextMesh>();
             SafeStreets.DialogStyle.Style(tm, 0.11f, 26, TextAnchor.MiddleCenter, Color.white, 5);
             tm.text = name;
+            return go;
         }
 
         private static SafeStreets.Conversation Conv(string speaker, params string[] lines)

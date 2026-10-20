@@ -8,7 +8,31 @@ Spec-driven development: every feature traces to `specs/001-homepage-auth-progre
 (spec → plan → data model → API contract → tasks), governed by
 `.specify/memory/constitution.md`.
 
-## Run it
+## Unity city prototype
+
+Open **`unity/`**, not the repository root, in Unity Hub using **Unity 6000.3.25f1**. After packages/assets import, open **`Assets/Scenes/City.unity`**, press Play, and click the Game view. Move with **WASD / arrow keys**, use **Space** near characters, and enter learning zones for quizzes. Follow on-screen answer/close controls.
+
+The earlier `Assets/Scenes/SafeStreets.unity` crossing test scene is also retained. The City is generated from `docs/map_design/city_layout.json` using **Tools → Build City Scene** (exit Play first; rebuilding regenerates the scene).
+
+**The website and Unity are separate prototypes**, not a deployed integrated game. Unity-to-web authenticated progress and a hosted WebGL build remain future work.
+
+For tomorrow's presentation, see **[docs/DEMO_GUIDE.md](docs/DEMO_GUIDE.md)**. Use fictional student data only; this is not a production school deployment.
+
+## Run the website
+
+Prerequisites: Python 3.10+ and a Node.js version supported by Vite (Node 22.12+ recommended). Portable setup from the repository root:
+
+```bash
+python -m venv .venv
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+# macOS/Linux: source .venv/bin/activate
+python -m pip install -r backend/requirements.txt
+python -m uvicorn main:app --app-dir backend --host 127.0.0.1 --port 8000
+```
+
+In a second terminal: `cd frontend`, `npm ci`, then `npm run dev`. Open **http://localhost:5173**. Keep both servers running. SQLite data and signing secrets are generated locally and excluded from Git.
+
+### Original machine-specific commands
 
 Backend (port 8000):
 ```bash
@@ -42,7 +66,8 @@ backend start.
 ## Verify
 
 ```bash
-# with both servers up and a FRESH database (delete backend/cutr.db*, restart backend):
+# Use an isolated fresh TEST database, never delete existing demo data:
+# Inspect test setup before running. With both servers up:
 C:/Users/dongt/AppData/Local/Python/bin/python.exe tests/e2e_phase1.py
 # then restart ONLY the backend (keep the DB!) and run:
 C:/Users/dongt/AppData/Local/Python/bin/python.exe tests/e2e_phase2.py

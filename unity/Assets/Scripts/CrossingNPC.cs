@@ -25,16 +25,33 @@ namespace SafeStreets
     {
         public string npcName = "friend";
 
+        [Tooltip("Optional authored lines (line 0 = opener). Empty = built-in generic lines.")]
+        public string[] scriptLines;
+        [Tooltip("Optional closing tip shown after the last line.")]
+        public string scriptTip;
+
         [Tooltip("Escort breaks if the player gets farther than this (world units).")]
         public float leashDistance = 6f;
         [Tooltip("How close the player must be to the NPC on the far shoulder for the crossing to count.")]
         public float escortRadius = 2.5f;
 
+        // ---- demo polish: crossing binding ----
+        // The city has several crossings. The old code asked the single global
+        // CrossingZone "which side of the road is world y=0", which only ever described
+        // the original one-crosswalk scene. Now each escort binds to the crossing it
+        // stands at (boundCrossing set by the scene builder, else the nearest corridor).
+        [Tooltip("Optional: crossing this NPC will use. Empty = nearest crossing to its post.")]
+        public CrossingZone boundCrossing;
+
+        /// <summary>How close the NPC must be to the corridor for an escort to be legal.</summary>
+        public float corridorArmDistance = 6f;
+
+        private CrossingZone _zone;          // resolved lazily (scene reload-safe)
+
         private enum EscortState { None, Escorting, Crossed }
         private EscortState _state = EscortState.None;
 
         private Conversation _intro;
-        private Conversation _thanks;
         private int _startSide;          // +1 north, -1 south (CrossingZone.SideOf at escort start)
         private Transform _player;
 
@@ -63,19 +80,34 @@ namespace SafeStreets
 
         private void Awake()
         {
+            // Authored script from the scene builder (CityContent.EscortScript) — falls
+            // back to the generic two-liner so a hand-placed NPC still works.
             _intro = ScriptableObject.CreateInstance<Conversation>();
             _intro.speakerName = npcName;
-            _intro.lines = new[]
-            {
-                $"Hi! I'm {npcName} and I need to cross this road.",
-                "Will you walk with me to the zebra stripes?",
-            };
-            _intro.closingTip = "Walk onto the white stripes and cross to the other side together!";
-
-            _thanks = ScriptableObject.CreateInstance<Conversation>();
-            _thanks.speakerName = npcName;
-            _thanks.lines = new[] { "Thank you! You're a safety hero!" };
+            _intro.lines = (scriptLines != null && scriptLines.Length > 0)
+                ? scriptLines
+                : new[]
+                {
+                    $"Hi! I'm {npcName} and I need to cross this road.",
+                    "Will you walk with me to the zebra stripes?",
+                };
+            _intro.closingTip = string.IsNullOrEmpty(scriptTip)
+                ? "Walk onto the white stripes and cross to the other side together!"
+                : scriptTip;
         }
+
+        /// <summary>The crossing this escort uses: authored ref, else the nearest one.</summary>
+        private CrossingZone Zone
+        {
+            get
+            {
+                if (boundCrossing != null) return boundCrossing;
+                if (_zone == null) _zone = CrossingZone.Nearest(transform.position);
+                return _zone;
+            }
+        }
+
+        private int SideHere => Zone != null ? Zone.Side(transform.position) : 0;   // no zone: no place to cross
 
         private void Update()
         {
@@ -96,12 +128,18 @@ namespace SafeStreets
             if (_fleeing)
             {
                 if (IsModalOpen()) return;
-                int side = CrossingZone.SideOf(transform.position);
+                var fleeZone = Zone;
+                if (fleeZone == null) { _fleeing = false; return; }   // nothing to flee from
+                int side = fleeZone.Side(transform.position);
                 if (side != 0) { _fleeing = false; return; }
-                float dirY = transform.position.y >= 0f ? 1f : -1f;
-                transform.position = Vector3.MoveTowards(transform.position,
-                    new Vector3(transform.position.x, dirY * 4f, transform.position.z),
-                    3f * Time.deltaTime);
+                // Step off the road along THIS crossing's axis toward the nearer shoulder.
+                float c = fleeZone.CenterAlongAxis;
+                float fleeDirection = (fleeZone.roadRunsAlongX ? transform.position.y : transform.position.x) >= c ? 1f : -1f;
+                float clearance = fleeZone.HalfThickness + 0.8f;
+                var target = fleeZone.roadRunsAlongX
+                    ? new Vector3(transform.position.x, c + fleeDirection * clearance, transform.position.z)
+                    : new Vector3(c + fleeDirection * clearance, transform.position.y, transform.position.z);
+                transform.position = Vector3.MoveTowards(transform.position, target, 3f * Time.deltaTime);
                 return;
             }
 
@@ -115,8 +153,19 @@ namespace SafeStreets
             // the NPC reaches one (this also makes mid-road re-talks work).
             if (_startSide == 0)
             {
-                int s = CrossingZone.SideOf(transform.position);
+                int s = SideHere;
                 if (s != 0) _startSide = s;
+            }
+
+            // 0. The escort is only legal near a crossing: if the player drags the NPC
+            //    away from its corridor we drop the escort (no silent middle-of-nowhere
+            //    "crossing" on a road with no stripes).
+            var zone = Zone;
+            if (zone != null && _startSide != 0 && !zone.InBand(transform.position)
+                && Vector2.Distance(zone.CorridorRect.center, transform.position) > corridorArmDistance)
+            {
+                Abandon("Let's go back to the zebra stripes - that's where we cross!");
+                return;
             }
 
             // 1. Leash: player wandered off.
@@ -130,11 +179,10 @@ namespace SafeStreets
             //    painted stripes. Only enforced once we know the starting side —
             //    a mid-road escort start walks to the nearest shoulder (flee) or
             //    into the corridor freely until a side is established.
-            var zone = CrossingZone.Instance;
-            if (zone != null && _startSide != 0 && Mathf.Abs(transform.position.y) <= zone.roadHalfY)
+            if (zone != null && _startSide != 0 && zone.Side(transform.position) == 0)
             {
-                var c = zone.corridor;
-                if (transform.position.x < c.xMin || transform.position.x > c.xMax)
+                var c = zone.CorridorRect;
+                if (!c.Contains((Vector2)transform.position))
                 {
                     Abandon("We must stay ON the stripes! Let's try again.");
                     return;
@@ -142,11 +190,11 @@ namespace SafeStreets
             }
 
             // 3. Completion: NPC reached the opposite shoulder...
-            int npcSide = zone != null ? CrossingZone.SideOf(transform.position) : 0;
+            int npcSide = zone != null ? zone.Side(transform.position) : 0;
             if (_startSide != 0 && npcSide != 0 && npcSide == -_startSide)
             {
                 // ...and the player came too — same opposite shoulder, within radius.
-                int playerSide = CrossingZone.SideOf(_player.position);
+                int playerSide = zone.Side(_player.position);
                 float dist = Vector2.Distance(transform.position, _player.position);
                 if (playerSide == npcSide && dist <= escortRadius)
                 {
@@ -183,7 +231,7 @@ namespace SafeStreets
         {
             _state = EscortState.None;
             _startSide = 0;
-            _fleeing = CrossingZone.SideOf(transform.position) == 0;
+            _fleeing = SideHere == 0;
             _cooldownUntil = Time.time + RetalkCooldown;
             ShowToast(reason);
         }
@@ -209,19 +257,25 @@ namespace SafeStreets
             _toastUntil = Time.time + ToastSeconds;
         }
 
-        /// <summary>
-        /// Zebra geometry authority lives in CrossingZone (stripe-union corridor +
-        /// road half-height from the Road sprite). Kept as a thin static for any
-        /// external callers; no per-frame sprite sweep anymore.
-        /// </summary>
-        public static bool InZebraZone(Vector3 pos) => CrossingZone.InCorridor(pos);
+        /// <summary>False once this NPC is mid-escort or already done — the router uses it
+        /// to stop offering "Press SPACE to talk" to a companion who is following you.</summary>
+        public bool CanTalk => _state == EscortState.None;
 
         /// <summary>Called by InteractionManager when the player talks to this NPC.</summary>
         public void Talk()
         {
             if (_state != EscortState.None) return;
             if (Time.time < _cooldownUntil) return;   // breaks the abandon->intro dialog loop
-            if (DialogManager.Instance.IsOpen) return;
+            if (DialogManager.Instance == null || DialogManager.Instance.IsOpen) return;
+            if (InteractionManager.TaskPaused) return;   // a minigame owns the screen
+
+            // Demo polish: with no crossing nearby there is nothing to walk them over.
+            // Say so in a toast instead of opening a dialog that can never be completed.
+            if (Zone == null)
+            {
+                ShowToast("Let's find a zebra crossing first!");
+                return;
+            }
 
             // R3: retries get a one-liner, not the full intro (no dialog marathon).
             // _attempted flips true after the first escort attempt.
@@ -239,7 +293,7 @@ namespace SafeStreets
                 _player = GameObject.FindWithTag("Player")?.transform;
                 // R3: escort ALWAYS starts. Side 0 (stranded mid-road) = "undetermined";
                 // it is captured the first time the NPC reaches a shoulder in Update.
-                _startSide = CrossingZone.SideOf(transform.position);
+                _startSide = SideHere;
                 _state = EscortState.Escorting;
             });
         }
@@ -247,41 +301,40 @@ namespace SafeStreets
         private IEnumerator CrossAndLeave()
         {
             _state = EscortState.Crossed;
-            QuestManager.Instance.RecordCrossing(npcName);
+            if (QuestManager.Instance != null) QuestManager.Instance.RecordCrossing(npcName);
 
-            // walk AWAY from the road on the side we actually arrived on
-            var target = transform.position + new Vector3(0f, Mathf.Sign(transform.position.y) * 8f, 0f);
-            while (Vector3.Distance(transform.position, target) > 0.2f)
+            // Demo polish (freeze fix): the thank-you is a NON-MODAL toast, and the
+            // goodbye is a short walk. The old flow opened a real DialogManager dialog
+            // here — that PAUSES the player, and when it is also the 3rd crossing the
+            // win banner immediately closes it, so every demo win left the player frozen
+            // on the banner with dead WASD. A toast cannot freeze anything.
+            ShowToast("Thank you! You're a safety hero!");
+
+            var zone = Zone;
+            float exitAlong = 0f, exitAcross = 0f;
+            if (zone != null)
             {
-                transform.position = Vector3.MoveTowards(
-                    transform.position, target, 2.5f * Time.deltaTime);
+                // step away from the road, along the crossing axis (generalizes the old
+                // hardcoded "walk north/south" — vertical crossings exit sideways)
+                float c = zone.CenterAlongAxis;
+                float sign = zone.roadRunsAlongX
+                    ? Mathf.Sign(transform.position.y - c)
+                    : Mathf.Sign(transform.position.x - c);
+                if (sign == 0f) sign = 1f;
+                exitAlong = sign * 3f;
+                exitAcross = 0f;
+            }
+            var target = zone != null && !zone.roadRunsAlongX
+                ? transform.position + new Vector3(exitAlong, exitAcross, 0f)
+                : transform.position + new Vector3(0f, exitAlong, 0f);
+            float t = 0f;
+            while (Vector3.Distance(transform.position, target) > 0.15f && t < 0.8f)
+            {
+                t += Time.deltaTime;
+                transform.position = Vector3.MoveTowards(transform.position, target, 3f * Time.deltaTime);
                 yield return null;
             }
-
-            // thank-you WITHOUT freezing the player: defer until no modal owns the
-            // screen (quiz-visit deferral, spec 006; 6s cap), show the line, wait
-            // until it's read, then despawn. No dialog race.
-            var dm = DialogManager.Instance;
-            if (dm != null)
-            {
-                float waited = 0f;
-                while (waited < 6f && IsModalOpen())
-                {
-                    waited += Time.deltaTime;
-                    yield return null;
-                }
-                if (!dm.IsOpen)
-                {
-                    dm.StartDialog(_thanks, gameObject);
-                    waited = 0f;
-                    while (dm.IsOpen && waited < 6f)
-                    {
-                        waited += Time.deltaTime;
-                        yield return null;
-                    }
-                    if (dm.IsOpen && dm.Source == gameObject) dm.Close();
-                }
-            }
+            yield return new WaitForSeconds(ToastSeconds);
             Destroy(gameObject);
         }
     }

@@ -53,6 +53,16 @@ namespace SafeStreets
         private ContactFilter2D _wallFilter;
         private readonly RaycastHit2D[] _hitBuf = new RaycastHit2D[1];
 
+        // Quality pass (GC-free rebuild): persistent buffers, Clear()ed every step.
+        // The old per-step new List<> x6 + 3x ToArray() churned tens of KB of garbage
+        // per physics frame at 50 Hz (=> MBs/s) — GC spikes during play.
+        private readonly List<Vector3> _ring = new();
+        private readonly List<Vector2> _ringDirs = new();
+        private readonly List<float> _ringDists = new();
+        private readonly List<Vector3> _verts = new(1024);
+        private readonly List<Color> _cols = new(1024);
+        private readonly List<int> _tris = new(4096);
+
         public int LastVertexCount { get; private set; }
         public string LastShader { get; private set; } = "n/a";
         public int LastHingeCount { get; private set; }
@@ -120,9 +130,10 @@ namespace SafeStreets
             // every frame). Cone mode (60-140°) still tracks facing.
 
             // ---- ring: cast rays, collect the vision polygon boundary ----
-            var ring = new List<Vector3>(rays + 8);
-            var ringDirs = new List<Vector2>(rays + 8);    // unit direction per ring vertex
-            var ringDists = new List<float>(rays + 8);     // distance from player per ring vertex
+            // (buffers are persistent fields — see the field note above; Clear + refill)
+            _ring.Clear();
+            _ringDirs.Clear();
+            _ringDists.Clear();
             Collider2D prevHit = null;
             int hinges = 0;
 
@@ -147,15 +158,15 @@ namespace SafeStreets
                 bool surfaceChanged = i > 0 && !SameSurface(hitCol, prevHit, dist, BaseViewDistance);
                 if (surfaceChanged)
                 {
-                    ring.Add(ring[ring.Count - 1]);            // hinge: bend at the corner
-                    ringDirs.Add(ringDirs[ringDirs.Count - 1]);
-                    ringDists.Add(ringDists[ringDists.Count - 1]);
+                    _ring.Add(_ring[_ring.Count - 1]);            // hinge: bend at the corner
+                    _ringDirs.Add(_ringDirs[_ringDirs.Count - 1]);
+                    _ringDists.Add(_ringDists[_ringDists.Count - 1]);
                     hinges++;
                 }
 
-                ring.Add(point);
-                ringDirs.Add(dir);
-                ringDists.Add(dist);
+                _ring.Add(point);
+                _ringDirs.Add(dir);
+                _ringDists.Add(dist);
                 prevHit = hitCol;
             }
             LastHingeCount = hinges;
@@ -170,39 +181,39 @@ namespace SafeStreets
             //   penumbra: a_i..a_j (ring, alpha 0) -> m_i..m_j (dist+EdgeWidth, full)
             //   solid:    m_i..m_j (full)          -> f_i..f_j (FAR, full)
             const float FAR = 60f;
-            int n = ring.Count;
-            var verts = new List<Vector3>(n * 6);
-            var cols = new List<Color>(n * 6);
-            var tris = new List<int>(n * 12);
+            int n = _ring.Count;
+            _verts.Clear();
+            _cols.Clear();
+            _tris.Clear();
             var clear = DimColor; clear.a = 0f;
 
             for (int i = 0; i < n; i++)
             {
                 int j = (i + 1) % n;                            // wraps the ring closed
-                var a_i = ring[i];
-                var a_j = ring[j];
-                var m_i = center + ringDirs[i] * (ringDists[i] + EdgeWidth);
-                var m_j = center + ringDirs[j] * (ringDists[j] + EdgeWidth);
-                var f_i = center + ringDirs[i] * FAR;
-                var f_j = center + ringDirs[j] * FAR;
+                var a_i = _ring[i];
+                var a_j = _ring[j];
+                var m_i = center + _ringDirs[i] * (_ringDists[i] + EdgeWidth);
+                var m_j = center + _ringDirs[j] * (_ringDists[j] + EdgeWidth);
+                var f_i = center + _ringDirs[i] * FAR;
+                var f_j = center + _ringDirs[j] * FAR;
 
                 // a_i, a_j, m_j, m_i, f_j, f_i
-                verts.Add(a_i); verts.Add(a_j); verts.Add(m_j); verts.Add(m_i); verts.Add(f_j); verts.Add(f_i);
-                cols.Add(clear); cols.Add(clear); cols.Add(DimColor); cols.Add(DimColor); cols.Add(DimColor); cols.Add(DimColor);
+                _verts.Add(a_i); _verts.Add(a_j); _verts.Add(m_j); _verts.Add(m_i); _verts.Add(f_j); _verts.Add(f_i);
+                _cols.Add(clear); _cols.Add(clear); _cols.Add(DimColor); _cols.Add(DimColor); _cols.Add(DimColor); _cols.Add(DimColor);
 
                 int v = i * 6;
                 // penumbra quad: a_i, a_j, m_j, m_i
-                tris.Add(v);     tris.Add(v + 1); tris.Add(v + 2);
-                tris.Add(v);     tris.Add(v + 2); tris.Add(v + 3);
+                _tris.Add(v);     _tris.Add(v + 1); _tris.Add(v + 2);
+                _tris.Add(v);     _tris.Add(v + 2); _tris.Add(v + 3);
                 // solid quad: m_i, m_j, f_j, f_i
-                tris.Add(v + 3); tris.Add(v + 2); tris.Add(v + 4);
-                tris.Add(v + 3); tris.Add(v + 4); tris.Add(v + 5);
+                _tris.Add(v + 3); _tris.Add(v + 2); _tris.Add(v + 4);
+                _tris.Add(v + 3); _tris.Add(v + 4); _tris.Add(v + 5);
             }
 
             _fogMesh.Clear();
-            _fogMesh.vertices = verts.ToArray();
-            _fogMesh.triangles = tris.ToArray();
-            _fogMesh.colors = cols.ToArray();
+            _fogMesh.SetVertices(_verts);
+            _fogMesh.SetTriangles(_tris, 0);
+            _fogMesh.SetColors(_cols);
             _fogMesh.RecalculateBounds();
             LastVertexCount = n;
 
@@ -220,18 +231,6 @@ namespace SafeStreets
             return a == b;
         }
 
-        /// <summary>
-        /// Darkness alpha at a distance from the player. (R5: no longer used by the
-        /// mesh — alpha now keys off the vision boundary via the two-quad extrusion.
-        /// Kept for external callers/debug.)
-        /// </summary>
-        private float AlphaFor(float distFromCenter)
-        {
-            float bandStart = BaseViewDistance - EdgeWidth;
-            float t = (distFromCenter - bandStart) / Mathf.Max(0.05f, EdgeWidth);
-            return Mathf.Clamp01(t) * DimColor.a;
-        }
-
         private float FacingAngle()
         {
             var pc = _origin.GetComponent<PlayerController2D>();
@@ -244,8 +243,13 @@ namespace SafeStreets
             float half = FieldOfView >= 360f ? 180f : FieldOfView * 0.5f;
             float facing = FacingAngle();
 
-            foreach (var ent in Object.FindObjectsByType<FogEntity>(FindObjectsSortMode.None))
+            // Quality pass: iterate the FogEntity self-registry instead of a
+            // FindObjectsByType sweep every physics frame (project convention:
+            // cache in an authority, don't re-sweep). Reverse order so an entity
+            // destroyed mid-loop (unregister) can't skip its neighbors.
+            for (int i = FogEntity.All.Count - 1; i >= 0; i--)
             {
+                var ent = FogEntity.All[i];
                 var pos = (Vector2)ent.transform.position;
                 var to = pos - center;
                 bool visible = false;

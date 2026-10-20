@@ -10,7 +10,7 @@ namespace SafeStreets
     public class WinBanner : MonoBehaviour
     {
         private TextMesh _hud;
-        private PlayerController2D _player;
+        private Sprite _confettiSprite;   // shared: one sprite for all 24 particles, not 24 Sprite.Create leaks per win
         private static readonly Color Gold = new Color(1f, 0.84f, 0.3f);
 
         /// <summary>
@@ -27,9 +27,10 @@ namespace SafeStreets
         private void OnDestroy()
         {
             QuestManager.OnAllCrossed -= OnQuestComplete;
+            if (_confettiSprite != null) Destroy(_confettiSprite);   // Sprite.Create'd assets are not GC'd with the GameObject
         }
 
-        public static WinBanner Create(Transform parent, TextMesh hud)
+        public static WinBanner Create(Transform parent)
         {
             var go = new GameObject("WinBanner");
             go.transform.SetParent(parent);
@@ -41,7 +42,7 @@ namespace SafeStreets
             // R10: post-win is FREE ROAM — the banner celebrates but never freezes
             // the player. (The old terminal freeze + any modal that opened after
             // the win = permanently frozen player with dead input: the "Ada brick".)
-            var playerGo2 = GameObject.FindWithTag("Player");
+            var playerGo = GameObject.FindWithTag("Player");
             // R7: dismiss anything that was open when the win fired — post-win
             // input routing is dead, so an open task/quiz/dialog/popup could never
             // close itself and would squat on the banner forever.
@@ -57,24 +58,20 @@ namespace SafeStreets
             // R10: free-roam guarantee. The modal resume callbacks decline to touch
             // movement post-win (R7 stale-close protection), so the win itself is the
             // last word: after dismissing everything, the player can ALWAYS move.
-            if (playerGo2 != null)
+            if (playerGo != null)
             {
-                var pcWin = playerGo2.GetComponent<PlayerController2D>();
+                var pcWin = playerGo.GetComponent<PlayerController2D>();
                 if (pcWin != null) pcWin.Paused = false;
             }
             InteractionManager.ClearTaskOwnership();
 
             if (_hud != null)
             {
-                _hud.text = "YOU DID IT!\nAll friends crossed safely!";
+                // Demo polish: the HUD sits in the top-left corner at charSize 0.14, so a
+                // two-line banner reached across the top half of the screen. One line,
+                // wrapped/shrunk to the same slot the counter uses.
+                TextFit.Apply(_hud, "ALL FRIENDS CROSSED - YOU DID IT!", boxW: 10f, boxH: 0.5f);
                 _hud.color = Gold;
-            }
-
-            var playerGo = GameObject.FindWithTag("Player");
-            if (playerGo != null)
-            {
-                // R10: NO freeze here — the player keeps walking after the win.
-                _player = playerGo.GetComponent<PlayerController2D>();
             }
 
             // simple confetti: 24 colored squares bursting from the player
@@ -95,8 +92,10 @@ namespace SafeStreets
             go.transform.position = from;
             var sr = go.AddComponent<SpriteRenderer>();
             // runtime-safe square (Editor-only SceneGeo is not visible from runtime asmdef)
-            sr.sprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 4, 4),
-                new Vector2(0.5f, 0.5f), 5f, 0, SpriteMeshType.FullRect);   // 4px @ PPU5 = 0.8 units
+            if (_confettiSprite == null)                                        // shared across all 24 particles
+                _confettiSprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 4, 4),
+                    new Vector2(0.5f, 0.5f), 5f, 0, SpriteMeshType.FullRect);   // 4px @ PPU5 = 0.8 units
+            sr.sprite = _confettiSprite;
             sr.color = color;
             sr.sortingOrder = 70;
             go.transform.localScale = new Vector3(0.31f, 0.31f, 1f);        // ~0.25 world units

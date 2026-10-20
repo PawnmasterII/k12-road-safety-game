@@ -10,6 +10,7 @@ export default function ActivityPage() {
   const [current, setCurrent] = useState(0)
   const [result, setResult] = useState(null)
   const [needsLogin, setNeedsLogin] = useState(false)
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     setNeedsLogin(!getToken())
@@ -18,14 +19,23 @@ export default function ActivityPage() {
       .catch((e) => setError(e.message))
   }, [moduleId])
 
-  if (error) return <div className="page"><p className="form-error">{error}</p><Link to="/">← Back home</Link></div>
-  if (!activity) return <div className="page"><p className="muted">Loading…</p></div>
+  if (error) {
+    return (
+      <div className="page narrow">
+        <p className="form-error" role="alert">{error}</p>
+        <p className="small"><Link to="/">← Back home</Link></p>
+      </div>
+    )
+  }
+  if (!activity) return <div className="page"><p className="muted" role="status">Loading your activity…</p></div>
 
   const questions = activity.questions
   const q = questions[current]
   const answeredAll = questions.every((qq) => answers[qq.id] !== undefined)
 
   async function submit() {
+    if (busy) return
+    setBusy(true)
     try {
       const r = await api('POST', `/activities/${activity.id}/submit`, {
         answers: questions.map((qq) => answers[qq.id]),
@@ -34,11 +44,15 @@ export default function ActivityPage() {
     } catch (e) {
       if (e.status === 401) setNeedsLogin(true)
       else setError(e.message)
+    } finally {
+      setBusy(false)
     }
   }
 
   function pick(choiceIdx) {
-    setAnswers({ ...answers, [q.id]: choiceIdx })
+    // Functional update so a double-tap can't write a stale answers object
+    // over the previous question's pick.
+    setAnswers((prev) => ({ ...prev, [q.id]: choiceIdx }))
     // brief pause so kids see their pick highlighted, then advance
     setTimeout(() => {
       if (current < questions.length - 1) setCurrent(current + 1)
@@ -46,9 +60,8 @@ export default function ActivityPage() {
   }
 
   if (result) {
-    const pct = Math.round((result.score / questions.length) * 100)
     return (
-      <div className="page narrow center">
+      <div className="page narrow center" role="status" aria-live="polite">
         <h1>{result.score === questions.length ? 'Perfect! 🌟' : result.score > 0 ? 'Nice work! 🎉' : 'Good try! 💪'}</h1>
         <p className="big-score">{result.score} / {questions.length} correct</p>
         <p className="muted">
@@ -64,13 +77,22 @@ export default function ActivityPage() {
           </div>
         )}
         <div className="hero-actions">
-          <button className="btn" onClick={() => { setResult(null); setAnswers({}); setCurrent(0) }}>Play again</button>
+          <button
+            className="btn"
+            onClick={() => {
+              setResult(null)
+              setAnswers({})
+              setCurrent(0)
+              window.scrollTo({ top: 0 })
+            }}
+          >
+            Play again
+          </button>
           <Link className="btn btn-primary" to={getToken() ? '/dashboard' : '/'}>Go home</Link>
         </div>
         {result.total_score !== null && (
           <p className="muted small">Score added: {result.score} point{result.score === 1 ? '' : 's'} · Total: {result.total_score}</p>
         )}
-        <p className="muted tiny">Immediate feedback builds stronger safety habits — that's the {pct}% spirit!</p>
       </div>
     )
   }
@@ -80,21 +102,30 @@ export default function ActivityPage() {
       <p className="muted small"><Link to="/">← Back home</Link></p>
       <h1>{activity.title}</h1>
       {needsLogin && (
-        <p className="notice">You are playing as a guest — <Link to="/signup">make an account</Link> to save your score and badges!</p>
+        <p className="notice">
+          You are playing as a guest — <Link to="/signup">make an account</Link> to save your score and badges!
+        </p>
       )}
-      <div className="progress-dots" aria-label={`Question ${current + 1} of ${questions.length}`}>
-        {questions.map((qq, i) => (
-          <span key={qq.id} className={`dot ${i < current ? 'dot-done' : ''} ${i === current ? 'dot-now' : ''}`}>●</span>
-        ))}
-        <span className="muted small"> Question {current + 1} of {questions.length}</span>
+      <div className="progress-dots">
+        {/* Dots are decoration; the count below is the accessible label. */}
+        <span aria-hidden="true" style={{ display: 'contents' }}>
+          {questions.map((qq, i) => (
+            <span key={qq.id} className={`dot ${i < current ? 'dot-done' : ''} ${i === current ? 'dot-now' : ''}`}>●</span>
+          ))}
+        </span>
+        <span className="muted small" role="status" aria-live="polite">
+          Question {current + 1} of {questions.length}
+        </span>
       </div>
-      <div className="card question-card">
-        <h2>{q.text}</h2>
-        <div className="choices">
+      <div className="card question-card" aria-labelledby="question-text">
+        <h2 id="question-text">{q.text}</h2>
+        <div className="choices" role="group" aria-label="Answer choices">
           {q.choices.map((c, i) => (
             <button
               key={i}
+              type="button"
               className={`choice ${answers[q.id] === i ? 'choice-picked' : ''}`}
+              aria-pressed={answers[q.id] === i}
               onClick={() => pick(i)}
             >
               {c}
@@ -104,12 +135,15 @@ export default function ActivityPage() {
       </div>
       <div className="hero-actions">
         {current > 0 && (
-          <button className="btn btn-ghost" onClick={() => setCurrent(current - 1)}>← Back</button>
+          <button className="btn btn-ghost" type="button" onClick={() => setCurrent(current - 1)}>← Back</button>
         )}
-        <button className="btn btn-primary" disabled={!answeredAll} onClick={submit}>
-          See my score!
+        <button className="btn btn-primary" type="button" disabled={!answeredAll || busy} onClick={submit}>
+          {busy ? 'Checking…' : 'See my score!'}
         </button>
       </div>
+      {!answeredAll && (
+        <p className="muted small">Answer every question to see your score.</p>
+      )}
     </div>
   )
 }

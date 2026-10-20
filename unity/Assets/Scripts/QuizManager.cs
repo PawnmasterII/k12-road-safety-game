@@ -34,6 +34,15 @@ namespace SafeStreets
         private TextMesh _feedback;
         private readonly GameObject[] _rows = new GameObject[4];
         private readonly TextMesh[] _rowLabels = new TextMesh[4];
+        private readonly GameObject[] _rowBars = new GameObject[4];
+
+        // ---- demo-polish layout constants (world units, panel is 9.6 x 7.6) ----
+        private const float RowWidth = 9.2f;
+        private const float RowStep = 0.95f;      // vertical pitch between answer rows
+        private const float RowTop = 0.75f;       // first row center
+        private const float RowTextW = 8.6f;      // label column inside the bar
+        private const float TextLeft = -4.35f;    // label left edge (MiddleLeft anchor)
+        private const float RowTextLineH = 0.52f; // one wrapped line at charSize 0.15
 
         private static readonly Color PanelCol = new Color(0.07f, 0.13f, 0.20f, 0.97f);
         private static readonly Color RowCol = new Color(0.15f, 0.23f, 0.34f);
@@ -73,7 +82,7 @@ namespace SafeStreets
 
             for (int i = 0; i < 4; i++)
             {
-                float y = 0.75f - i * 0.95f;
+                float y = RowTop - i * RowStep;
                 var row = new GameObject("Choice" + i);
                 row.transform.SetParent(_panel.transform, false);
                 row.transform.localPosition = new Vector3(0f, y, 0f);
@@ -91,7 +100,7 @@ namespace SafeStreets
                 labelGo.transform.SetParent(row.transform, false);
                 var tm = labelGo.AddComponent<TextMesh>();
                 DialogStyle.Style(tm, 0.15f, 30, TextAnchor.MiddleLeft, Color.white, 57);
-                labelGo.transform.localPosition = new Vector3(-4.35f, 0.05f, 0f);
+                labelGo.transform.localPosition = new Vector3(TextLeft, 0f, 0f);
 
                 var col = row.AddComponent<BoxCollider2D>();
                 col.size = new Vector2(9.2f, 0.84f);
@@ -100,6 +109,7 @@ namespace SafeStreets
 
                 _rows[i] = row;
                 _rowLabels[i] = tm;
+                _rowBars[i] = barGo;
             }
 
             _feedback = MakeText("Feedback", 0.14f, 28, TextAnchor.UpperCenter, HintCol, 56);
@@ -171,7 +181,11 @@ namespace SafeStreets
         {
             var q = _bank.questions[_q];
             string kind = q.kind == QuestionKind.TrueFalse ? "TRUE or FALSE" : "MULTIPLE CHOICE";
-            _header.text = $"{_bank.title}  -  Q{_q + 1}/{_bank.questions.Length}  -  {kind}";
+            // Demo polish (header fit): the full "title - Q1/5 - MULTIPLE CHOICE" string is
+            // 40+ chars and used to run past the card edges at charSize 0.17 (and the X
+            // sits at the same height). Progress now leads, long titles shrink via TextFit.
+            TextFit.Apply(_header, $"Q{_q + 1}/{_bank.questions.Length}  -  {kind}  -  {_bank.title}",
+                boxW: 8.0f, boxH: 0.36f);
             _prompt.anchor = TextAnchor.UpperLeft;
             _prompt.alignment = TextAlignment.Left;
             _prompt.transform.localPosition = new Vector3(-4.4f, 2.9f, 0f);
@@ -182,38 +196,68 @@ namespace SafeStreets
             if (q.kind == QuestionKind.TrueFalse)
             {
                 rows = 2;
-                _rowLabels[0].text = "1) TRUE";
-                _rowLabels[1].text = "2) FALSE";
+                TextFit.Apply(_rowLabels[0], "1) TRUE", boxW: RowTextW, boxH: 0.45f);
+                TextFit.Apply(_rowLabels[1], "2) FALSE", boxW: RowTextW, boxH: 0.45f);
             }
             else
             {
                 rows = Mathf.Min(q.choices.Length, 4);
                 for (int i = 0; i < rows; i++)
-                    TextFit.Apply(_rowLabels[i], $"{i + 1}) {q.choices[i]}", boxW: 8.6f, boxH: 0.6f);
+                    TextFit.Apply(_rowLabels[i], $"{i + 1}) {q.choices[i]}", boxW: RowTextW, boxH: 0.6f);
             }
-            for (int i = 0; i < _rows.Length; i++)
-            {
-                _rows[i].SetActive(i < rows);
-                if (i < rows) _rows[i].GetComponentInChildren<SpriteRenderer>().color = RowCol;
-            }
+            LayoutRows(rows);
             _feedback.color = HintCol;
             TextFit.Apply(_feedback, "Click an answer or press its number", boxW: 9.0f, boxH: 1.2f);
+        }
+
+        /// <summary>
+        /// Demo polish: size and stack the answer rows to the CONTENT. The fixed 0.84-tall
+        /// bars clipped two-line answers (the city banks have 55-char options) and wasted
+        /// 3.7 units of card whenever a bank had only a few questions. Each bar now gets
+        /// one or two line-heights, rows stack downward from RowTop, and every row keeps a
+        /// click collider matched to its new size.
+        /// </summary>
+        private void LayoutRows(int rows)
+        {
+            float y = RowTop;
+            for (int i = 0; i < _rows.Length; i++)
+            {
+                bool on = i < rows;
+                _rows[i].SetActive(on);
+                if (!on) continue;
+
+                int lineCount = TextFit.LineCount(_rowLabels[i].text);
+                float h = Mathf.Clamp(0.30f + (lineCount - 1) * RowTextLineH, 0.84f, 1.5f);
+                // The bar sprite is a 4x4 white texture at PPU 1 => 4 world units natural,
+                // so its localScale is (width, height) / 4.
+                _rowBars[i].transform.localScale = new Vector3(RowWidth / 4f, h / 4f, 1f);
+                var col = _rows[i].GetComponent<BoxCollider2D>();
+                if (col != null) col.size = new Vector2(RowWidth, h);
+                _rows[i].transform.localPosition = new Vector3(0f, y, 0f);
+                var sr = _rowBars[i].GetComponent<SpriteRenderer>();
+                if (sr != null) sr.color = RowCol;
+                y -= h + 0.11f;                                  // 0.11 gap between rows
+            }
         }
 
         public void PressChoice(int index)
         {
             if (!IsOpen || _locked || _finished) return;
+            if (_bank == null) return;
             var q = _bank.questions[_q];
             int rows = q.kind == QuestionKind.TrueFalse ? 2 : Mathf.Min(q.choices.Length, 4);
             if (index < 0 || index >= rows) return;
+            if (q.kind != QuestionKind.TrueFalse && q.choices == null) return;
 
             int correctIdx = q.kind == QuestionKind.TrueFalse ? (q.trueIsCorrect ? 0 : 1) : q.correctIndex;
+            correctIdx = Mathf.Clamp(correctIdx, 0, rows - 1);   // authored data can't crash a demo
             bool right = index == correctIdx;
             if (right) _score++;
 
             for (int i = 0; i < rows; i++)
             {
-                var sr = _rows[i].GetComponentInChildren<SpriteRenderer>();
+                var sr = _rowBars[i] != null ? _rowBars[i].GetComponent<SpriteRenderer>() : null;
+                if (sr == null) continue;
                 if (i == correctIdx) sr.color = GoodCol;
                 else if (i == index) sr.color = BadCol;
             }
@@ -244,12 +288,26 @@ namespace SafeStreets
             int n = _bank.questions.Length;
             _header.text = "Quiz complete";
             _prompt.anchor = TextAnchor.MiddleCenter;
+            _prompt.alignment = TextAlignment.Center;   // non-UpperLeft anchor => centered lines (MakeText rule); was ragged-Left from ShowQuestion
             _prompt.transform.localPosition = new Vector3(0f, 1.4f, 0f);
             string praise = _score == n ? "Perfect!" : _score * 2 >= n ? "Good job!" : "Keep practicing!";
             TextFit.Apply(_prompt, $"{_bank.title}: you got {_score} / {n}.\n{praise}", boxW: 8.8f, boxH: 3.4f);
+            // Closable from the keyboard: the results card has no answers, so SPACE could
+            // not do anything and ESC-or-X were the only ways out of a finished quiz.
             for (int i = 0; i < _rows.Length; i++) _rows[i].SetActive(false);
             _feedback.color = HintCol;
             TextFit.Apply(_feedback, "Press SPACE to finish", boxW: 9.0f, boxH: 1.2f);
+
+            // Results row: a clickable "Finish" bar in the first answer slot, so the demo
+            // can be driven with the mouse alone (and keyboard 1) as well as SPACE.
+            _rows[0].transform.localPosition = new Vector3(0f, 0.1f, 0f);
+            _rowBars[0].transform.localScale = new Vector3(RowWidth / 4f, 0.84f / 4f, 1f);
+            var col0 = _rows[0].GetComponent<BoxCollider2D>();
+            if (col0 != null) col0.size = new Vector2(RowWidth, 0.84f);
+            var sr0 = _rowBars[0].GetComponent<SpriteRenderer>();
+            if (sr0 != null) sr0.color = RowCol;
+            TextFit.Apply(_rowLabels[0], "1) Finish", boxW: RowTextW, boxH: 0.45f);
+            _rows[0].SetActive(true);
             Debug.Log($"[Quiz] completed activity={_bank.activityId} score={_score}/{n}");
         }
 
@@ -271,7 +329,8 @@ namespace SafeStreets
                 if (DialogManager.Instance != null && DialogManager.Instance.IsOpen) return;
                 if (InteractionManager.TaskPaused) return;
                 var player = GameObject.FindWithTag("Player");
-                if (player != null) player.GetComponent<PlayerController2D>().Paused = false;
+                var pc = player != null ? player.GetComponent<PlayerController2D>() : null;
+                if (pc != null) pc.Paused = false;
             });
             if (!completed && !_finished && _bank != null)
                 Debug.Log($"[Quiz] abandoned activity={_bank.activityId}");
@@ -289,7 +348,8 @@ namespace SafeStreets
             if (_locked) return;
             if (_finished)
             {
-                if (Input.GetKeyDown(KeyCode.Space)) Close(true);
+                if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Alpha1)
+                    || Input.GetKeyDown(KeyCode.Return)) Close(true);
                 return;
             }
             var q = _bank.questions[_q];

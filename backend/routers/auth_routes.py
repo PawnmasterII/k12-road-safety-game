@@ -87,8 +87,20 @@ def signup(body: SignupBody):
         match = next((r for r in same_name if r["id"] == body.existing_student_id), None)
         if match is None:
             raise HTTPException(status_code=400, detail="That student doesn't exist — start fresh.")
+        # Brute-force guard: this path verifies a PIN exactly like /login, but the
+        # limiter never saw it. Key it the same way (401 on failure = failed attempt).
+        key = f"{body.first_name.strip().lower()}|{body.school.strip().lower()}"
+        blocked = auth_mod.login_blocked(key)
+        if blocked > 0:
+            mins = max(1, blocked // 60)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many tries. Take a break and ask your teacher for help — try again in {mins} minute(s).",
+            )
         if match["pin_hash"] != auth_mod.hash_pin(body.pin, match["pin_salt"]):
+            auth_mod.record_failed_login(key)
             raise HTTPException(status_code=401, detail=LOGIN_FAIL_MSG)
+        auth_mod.clear_failures(key)
         return {"token": auth_mod.make_token(match["id"]), "student": student_public(match)}
     elif same_name:
         raise HTTPException(
@@ -100,7 +112,9 @@ def signup(body: SignupBody):
         student_id = db.create_student(
             body.first_name.strip(), body.age, body.school.strip(), body.grade, salt, pin_hash
         )
-    except Exception:
+    except sqlite3.IntegrityError:
+        # Genuine uniqueness collision (same name+school+PIN raced in). A generic
+        # except swallowed every other DB error as a bogus 409 "duplicate".
         raise HTTPException(status_code=409, detail=DUP_MSG)
 
     row = db.get_student(student_id)

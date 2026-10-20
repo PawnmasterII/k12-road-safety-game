@@ -16,7 +16,6 @@ namespace SafeStreets
         public static InteractionManager Instance { get; private set; }
 
         public float range = 1.8f;        // kept for click-to-open reach check
-        public float facingDot = 0.35f;   // legacy knob (unused by overlap model)
 
         public Interactable Candidate { get; private set; }
         public Interactable Open { get; private set; }
@@ -86,7 +85,6 @@ namespace SafeStreets
                 if (p == null) return;
                 _player = p.transform;
             }
-            if (_pc == null) _pc = _player.GetComponent<PlayerController2D>();
 
             // R4/R5: input ACTIONS are gated (swallow window / unfocused editor), but
             // hint TRACKING always runs — a gated return here froze the prompt at a
@@ -149,25 +147,11 @@ namespace SafeStreets
             }
         }
 
-        /// <summary>
-        /// Facing check fixed: uses the player's last MOVE direction (PlayerController2D.FaceDir),
-        /// not transform.up — the player never rotates (freezeRotation), so transform.up is
-        /// always world-up and the old check silently rejected approaches from the south.
-        /// </summary>
-        private bool PlayerFacing(Vector2 toTarget)
-        {
-            var face = _pc != null ? _pc.FaceDir : Vector2.down;
-            if (face.sqrMagnitude < 0.01f) face = Vector2.down;
-            return Vector2.Dot(face, toTarget.normalized) >= facingDot;
-        }
-
-        private PlayerController2D _pc;
-
-        private SafeStreets.QuizZone FindNearQuizZone()
+        private QuizZone FindNearQuizZone()
         {
             // R8: edge distance (not center distance) — zones are big; a player
             // standing in a far corner must still get the "Press SPACE" prompt.
-            foreach (var zone in FindObjectsByType<SafeStreets.QuizZone>(FindObjectsSortMode.None))
+            foreach (var zone in FindObjectsByType<QuizZone>(FindObjectsSortMode.None))
             {
                 var col = zone.GetComponent<Collider2D>();
                 float d = col != null
@@ -178,18 +162,19 @@ namespace SafeStreets
             return null;
         }
 
-        private SafeStreets.CrossingNPC FindNearCrossingNpc()
+        private CrossingNPC FindNearCrossingNpc()
         {
-            foreach (var cnpc in FindObjectsByType<SafeStreets.CrossingNPC>(FindObjectsSortMode.None))
+            foreach (var cnpc in FindObjectsByType<CrossingNPC>(FindObjectsSortMode.None))
             {
+                if (!cnpc.CanTalk) continue;   // already walking with you / already crossed
                 if (Vector2.Distance(cnpc.transform.position, _player.position) <= 2.2f) return cnpc;
             }
             return null;
         }
 
-        private SafeStreets.DialogNPC FindNearDialogNpc()
+        private DialogNPC FindNearDialogNpc()
         {
-            foreach (var npc in FindObjectsByType<SafeStreets.DialogNPC>(FindObjectsSortMode.None))
+            foreach (var npc in FindObjectsByType<DialogNPC>(FindObjectsSortMode.None))
             {
                 if (Vector2.Distance(npc.transform.position, _player.position) <= 2.2f) return npc;
             }
@@ -203,13 +188,6 @@ namespace SafeStreets
             if (col == null) return Vector2.Distance(it.transform.position, point);
             var closest = col.ClosestPoint(point);
             return Vector2.Distance(closest, point);
-        }
-
-        public bool TrySpace()
-        {
-            if (Open != null) { Close(); return true; }
-            if (Candidate != null) { OpenUp(Candidate); return true; }
-            return false;
         }
 
         public void TryClickOpen(Interactable it)
@@ -298,29 +276,16 @@ namespace SafeStreets
 
         // ---- floating hint above the candidate ----
 
-        private static Font _builtinFont;
-
-        internal static Font BuiltinFont()
-        {
-            if (_builtinFont == null)
-                _builtinFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            return _builtinFont;
-        }
-
-        /// <summary>Script-created TextMeshes have NO font — assign it or nothing renders.</summary>
+        /// <summary>Script-created TextMeshes have NO font — assign it or nothing
+        /// renders. Thin wrapper over DialogStyle.Style (ONE shared font cache) with
+        /// this project's panel convention: Center line alignment. Internal because
+        /// DragDropTask's baked labels call it.</summary>
         internal static void StyleText(TextMesh tm, string text, float charSize, int fontSize,
             TextAnchor anchor, Color color, int sortingOrder)
         {
+            DialogStyle.Style(tm, charSize, fontSize, anchor, color, sortingOrder,
+                TextAlignment.Center);
             tm.text = text;
-            tm.font = BuiltinFont();
-            tm.characterSize = charSize;
-            tm.fontSize = fontSize;
-            tm.anchor = anchor;
-            tm.alignment = TextAlignment.Center;
-            tm.color = color;
-            var r = tm.GetComponent<MeshRenderer>();
-            r.sharedMaterial = tm.font.material;
-            r.sortingOrder = sortingOrder;
         }
 
         private void UpdateHint(Transform target, string text)
@@ -426,7 +391,23 @@ namespace SafeStreets
     {
         private void OnMouseDown()
         {
-            InteractionManager.Instance.Close();
+            // The X belongs to THIS popup. A click routed here while the popup is closed
+            // (or already re-opened by another route) must not close someone else's modal.
+            var im = InteractionManager.Instance;
+            if (im == null || im.Open == null) return;
+            // Stationary click guard: the popup re-pins itself to the camera every frame,
+            // so a drag across the screen must not be read as "click the X". Hidden
+            // pointer is the editor's placeholder position — skip the check there.
+            if (Input.mousePresent)
+            {
+                var cam = Camera.main;
+                if (cam != null)
+                {
+                    var world = cam.ScreenToWorldPoint(Input.mousePosition);
+                    if (Vector2.Distance(world, transform.position) > 0.75f) return;
+                }
+            }
+            im.Close();
         }
     }
 }
