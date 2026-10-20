@@ -197,7 +197,7 @@ namespace SafeStreets
         private static Font _font;
 
         public static void Style(TextMesh tm, float charSize, int fontSize, TextAnchor anchor,
-            Color color, int sortingOrder)
+            Color color, int sortingOrder, TextAlignment alignment = TextAlignment.Left)
         {
             if (_font == null)
                 _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
@@ -205,7 +205,7 @@ namespace SafeStreets
             tm.characterSize = charSize;
             tm.fontSize = fontSize;
             tm.anchor = anchor;
-            tm.alignment = TextAlignment.Left;
+            tm.alignment = alignment;
             tm.color = color;
             var r = tm.GetComponent<MeshRenderer>();
             r.sharedMaterial = _font.material;

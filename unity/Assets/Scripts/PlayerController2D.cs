@@ -37,6 +37,7 @@ namespace SafeStreets
         private void Awake()
         {
             _rb = GetComponent<Rigidbody2D>();
+            TryGetComponent(out _sr);   // optional: movement works without a sprite
             _rb.gravityScale = 0f;      // top-down RPG: no gravity (tutorial #1)
             _rb.freezeRotation = true;
             // R6e: interpolate Transform between 50Hz physics steps — without this the
@@ -99,7 +100,6 @@ namespace SafeStreets
         private void HandleStepAndFlip(Vector2 move)
         {
             // GGD facingRight: flip the sprite with horizontal input
-            if (_sr == null) _sr = GetComponent<SpriteRenderer>();
             if (_sr != null && Mathf.Abs(move.x) > IsRunningThreshold)
                 _sr.flipX = move.x < 0f;
 

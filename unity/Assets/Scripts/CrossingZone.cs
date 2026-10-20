@@ -3,35 +3,118 @@ using UnityEngine;
 namespace SafeStreets
 {
     /// <summary>
-    /// Spec 006: single source of truth for zebra-crossing geometry.
-    /// One instance over the stripe union. The road's own sprite bounds give the
-    /// road half-height for the side() test; the zone bounds give the corridor.
-    /// Replaces the per-frame FindObjectsByType("Zebra*") sweep in CrossingNPC.
+    /// Spec 006: single source of truth for zebra-crossing geometry — now PER CROSSING.
+    ///
+    /// Original model: one instance over the stripe union, road half-height taken from
+    /// the sprite literally named "Road", side computed against world y = 0. That only
+    /// works for the old single crosswalk at the origin. The city scene has crossings at
+    /// several junctions (and no "Road" sprite), so this component now describes ONE
+    /// crossing: the road it crosses (axis, centerline, half-thickness) and its stripe
+    /// corridor. A static registry lets a CrossingNPC resolve the crossing it is
+    /// actually standing on.
+    ///
+    /// ALWAYS place one at every road edge an escort must cross — the corridor zone is a
+    /// SOLID collider (it keeps the player on the stripes), so a missing zone lets the
+    /// player wander off the stripes, and a missing zone at a walkable road edge walls
+    /// the player out of the road entirely.
     /// </summary>
     public class CrossingZone : MonoBehaviour
     {
+        /// <summary>Legacy single-instance accessor (most recently enabled crossing).
+        /// Prefer <see cref="Nearest(Vector3)"/> so multi-crossing scenes resolve locally.</summary>
         public static CrossingZone Instance { get; private set; }
 
-        /// <summary>Corridor AABB (stripe union), world space, no forgiveness margin.</summary>
-        [HideInInspector] public Rect corridor;
+        /// <summary>Every crossing in the scene (self-registered — no per-frame sweeps).</summary>
+        public static readonly System.Collections.Generic.List<CrossingZone> All = new();
 
-        /// <summary>Road half-height, from the Road sprite bounds.</summary>
-        [HideInInspector] public float roadHalfY;
+        // ---- Primary generator: the road being crossed ----
+        [Header("Road crossed (world space)")]
+        [Tooltip("true = the road runs along X (you travel north/south across it)")]
+        public bool roadRunsAlongX = true;
+        public Vector2 roadCenter = Vector2.zero;
+        [Tooltip("Road half-thickness along the crossing axis (width / 2)")]
+        public float roadHalfExtent = 3f;
+        [Tooltip("Optional: sprite whose bounds define the road band (overrides the numbers)")]
+        public SpriteRenderer roadSprite;
 
-        /// <summary>Side of the road: +1 north, -1 south, 0 on the road.</summary>
+        // ---- Secondary generator: the stripe corridor ----
+        [Tooltip("Stripe-union AABB in world space — the painted walking band")]
+        public Rect corridor;
+        [Tooltip("Optional: sprite whose bounds define the corridor (overrides the rect)")]
+        public SpriteRenderer corridorSprite;
+
+        /// <summary>Half-thickness of the road ALONG Y (axis-aware legacy accessor).</summary>
+        public float roadHalfY => roadRunsAlongX ? HalfThickness : CorridorRect.height * 0.5f;
+
+        /// <summary>+1 far side, -1 near side, 0 on the road — relative to the NEAREST
+        /// crossing's road, along its crossing axis (was hardwired to world y / 0).</summary>
         public static int SideOf(Vector3 pos)
         {
-            if (Instance == null) return 0;
-            if (pos.y > Instance.roadHalfY) return 1;
-            if (pos.y < -Instance.roadHalfY) return -1;
+            var z = Nearest(pos);
+            return z != null ? z.Side(pos) : 0;
+        }
+
+        public int Side(Vector3 pos)
+        {
+            float along = roadRunsAlongX ? pos.y : pos.x;
+            float c = CenterAlongAxis;
+            float h = HalfThickness;
+            if (along > c + h) return 1;
+            if (along < c - h) return -1;
             return 0;
         }
 
-        /// <summary>True if pos is inside the corridor (exactly the painted stripes).</summary>
-        public static bool InCorridor(Vector3 pos)
+        /// <summary>True if pos is inside ANY crossing's painted stripe band.</summary>
+        public static bool InCorridor(Vector3 pos) => Nearest(pos)?.InBand(pos) ?? false;
+
+        public bool InBand(Vector3 pos)
         {
-            return Instance != null && Instance.corridor.Contains(pos);
+            var r = CorridorRect;
+            return r.width > 0.001f && r.height > 0.001f && r.Contains(pos);
         }
+
+        // ---- resolved geometry (sprite references win when present) ----
+
+        public Rect CorridorRect
+        {
+            get
+            {
+                if (corridorSprite != null)
+                {
+                    var b = corridorSprite.bounds;
+                    return Rect.MinMaxRect(b.min.x, b.min.y, b.max.x, b.max.y);
+                }
+                return corridor;
+            }
+        }
+
+        /// <summary>Road band as a world AABB (x = along the road, y = thickness).</summary>
+        public Rect RoadBand
+        {
+            get
+            {
+                if (roadSprite != null)
+                {
+                    var b = roadSprite.bounds;
+                    return Rect.MinMaxRect(b.min.x, b.min.y, b.max.x, b.max.y);
+                }
+                return roadRunsAlongX
+                    ? Rect.MinMaxRect(roadCenter.x - 100f, roadCenter.y - roadHalfExtent,
+                                      roadCenter.x + 100f, roadCenter.y + roadHalfExtent)
+                    : Rect.MinMaxRect(roadCenter.x - roadHalfExtent, roadCenter.y - 100f,
+                                      roadCenter.x + roadHalfExtent, roadCenter.y + 100f);
+            }
+        }
+
+        /// <summary>Half-thickness of the road measured along the crossing axis.</summary>
+        public float HalfThickness => roadSprite != null
+            ? (roadRunsAlongX ? roadSprite.bounds.extents.y : roadSprite.bounds.extents.x)
+            : roadHalfExtent;
+
+        /// <summary>Position of the road centerline along the crossing axis.</summary>
+        public float CenterAlongAxis => roadSprite != null
+            ? (roadRunsAlongX ? roadSprite.bounds.center.y : roadSprite.bounds.center.x)
+            : (roadRunsAlongX ? roadCenter.y : roadCenter.x);
 
         private void Awake()
         {
@@ -39,67 +122,77 @@ namespace SafeStreets
             Recompute();
         }
 
-        /// <summary>Editor/scene-build helper: keeps geometry honest after moving the zone.</summary>
-        private void OnDrawGizmosSelected()
+        private void OnEnable() => All.Add(this);
+        private void OnDisable() => All.Remove(this);
+
+        /// <summary>Nearest crossing whose corridor contains pos, else nearest by distance.</summary>
+        public static CrossingZone Nearest(Vector3 pos)
         {
-            Recompute();
-            Gizmos.color = new Color(0.3f, 1f, 0.5f, 0.55f);
-            Gizmos.DrawWireCube(corridor.center, corridor.size);
-            Gizmos.color = new Color(1f, 0.4f, 0.4f, 0.4f);
-            var c = corridor.center;
-            Gizmos.DrawLine(new Vector3(c.x - corridor.width, -roadHalfY, 0f),
-                            new Vector3(c.x + corridor.width, -roadHalfY, 0f));
-            Gizmos.DrawLine(new Vector3(c.x - corridor.width, roadHalfY, 0f),
-                            new Vector3(c.x + corridor.width, roadHalfY, 0f));
+            CrossingZone best = null;
+            float bestD = float.MaxValue;
+            for (int i = 0; i < All.Count; i++)
+            {
+                var z = All[i];
+                if (z == null) continue;
+                if (z.InBand(pos)) return z;                        // exact cover wins
+                float d = Vector2.Distance(z.CorridorRect.center, pos);
+                if (d < bestD) { bestD = d; best = z; }
+            }
+            return best;
         }
 
-        /// <summary>
-        /// Corridor = union of all active Zebra* sprites (cached once, not swept per frame);
-        /// roadHalfY from the Road sprite. Falls back to own collider if stripes missing.
-        /// </summary>
+        /// <summary>Nearest crossing, but only within <paramref name="maxDistance"/>.</summary>
+        public static CrossingZone NearestWithin(Vector3 pos, float maxDistance)
+        {
+            var z = Nearest(pos);
+            if (z == null) return null;
+            float d = z.InBand(pos) ? 0f : Vector2.Distance(z.CorridorRect.center, pos);
+            return d <= maxDistance ? z : null;
+        }
+
+        /// <summary>Scene-build helper: fill the serialized geometry from sprite refs so
+        /// inspector values are honest before play.</summary>
         public void Recompute()
         {
-            float minX = float.MaxValue, maxX = float.MinValue;
-            float minY = float.MaxValue, maxY = float.MinValue;
-            bool found = false;
-            var all = FindObjectsByType<SpriteRenderer>(FindObjectsSortMode.None);
-            foreach (var z in all)
+            if (roadSprite != null)
             {
-                if (!z.name.StartsWith("Zebra")) continue;
-                var b = z.bounds;
-                minX = Mathf.Min(minX, b.min.x); maxX = Mathf.Max(maxX, b.max.x);
-                minY = Mathf.Min(minY, b.min.y); maxY = Mathf.Max(maxY, b.max.y);
-                found = true;
+                var b = roadSprite.bounds;
+                roadRunsAlongX = b.size.x >= b.size.y;
+                roadCenter = b.center;
+                roadHalfExtent = roadRunsAlongX ? b.extents.y : b.extents.x;
             }
-            if (!found)
+            if (corridorSprite != null)
+            {
+                var b = corridorSprite.bounds;
+                corridor = Rect.MinMaxRect(b.min.x, b.min.y, b.max.x, b.max.y);
+            }
+            else if (corridor.width <= 0.001f)
             {
                 var col = GetComponent<BoxCollider2D>();
                 if (col != null)
                 {
                     var b = col.bounds;
-                    corridor = new Rect(b.center - b.extents, b.size);
-                    found = true;
+                    corridor = Rect.MinMaxRect(b.min.x, b.min.y, b.max.x, b.max.y);
                 }
             }
-            else
-            {
-                corridor = Rect.MinMaxRect(minX, minY, maxX, maxY);
-            }
-            roadHalfY = 3f; // Road sprite is 40x6 at origin; fallback if lookup below fails
-            foreach (var r in all)
-            {
-                if (r.name == "Road")
-                {
-                    roadHalfY = r.bounds.extents.y;
-                    break;
-                }
-            }
+        }
+
+        /// <summary>Editor/scene-build helper: visualize both generators.</summary>
+        private void OnDrawGizmosSelected()
+        {
+            Gizmos.color = new Color(0.3f, 1f, 0.5f, 0.55f);
+            var c = CorridorRect;
+            Gizmos.DrawWireCube(c.center, c.size);
+            Gizmos.color = new Color(1f, 0.4f, 0.4f, 0.6f);
+            var rb = RoadBand;
+            Gizmos.DrawWireCube(rb.center, new Vector3(rb.width - 0.2f, rb.height - 0.2f, 0f));
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStatics()
         {
             Instance = null;   // statics survive domain reloads in the Editor (project convention)
+            All.Clear();
         }
     }
 }

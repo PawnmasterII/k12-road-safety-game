@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 131e1dca5f7f2ca42be00771cea61f30, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SafeStreets.Conversation
+  speakerName: Granny Rose
+  lines:
+  - Oh, hello dear. I'm Rose - I need to get across to the grocery store.
+  - My eyes aren't what they were. Hold on, will you walk over with me?
+  - 'Parking lots are the worst part: cars back out and nobody looks for a little
+    old lady.'
+  closingTip: Stay on the stripes. And if a car has white backup lights on, we stop
+    and wait.

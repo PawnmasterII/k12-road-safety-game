@@ -15,6 +15,16 @@ namespace SafeStreets
         [Range(0f, 1f)]
         public float Reveal = 1f;                  // current visibility (drives alphas)
 
+        /// <summary>All live fog entities — self-registered here so FogOfWar2D never
+        /// sweeps FindObjectsByType every frame (project caching convention).</summary>
+        public static readonly System.Collections.Generic.List<FogEntity> All = new();
+
+        private void OnEnable() => All.Add(this);
+        private void OnDisable() => All.Remove(this);
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics() => All.Clear();   // statics survive domain reloads (convention)
+
         private SpriteRenderer[] _srs;
         private TextMesh[] _texts;
         private float[] _srBase;
@@ -33,7 +43,8 @@ namespace SafeStreets
 
         private void LateUpdate()
         {
-            // runs after FogOfWar2D.LateUpdate set _target this frame.
+            // runs after FogOfWar2D.FixedUpdate set _target this frame (R6e: the fog
+            // steps on the physics clock, which always precedes LateUpdate).
             // NOTE: must move EVERY frame — gating on "target changed" freezes the
             // fade one step after the first flip (the stuck-at-0.88 bug).
             if (Mathf.Abs(Reveal - _target) > 0.001f)

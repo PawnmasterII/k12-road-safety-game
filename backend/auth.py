@@ -26,7 +26,10 @@ def login_blocked(key: str) -> int:
         tries = [t for t in _attempts.get(key, []) if now - t < COOLDOWN_SECONDS]
         _attempts[key] = tries
         if len(tries) >= MAX_ATTEMPTS:
-            return int(COOLDOWN_SECONDS - (now - tries[0])) + 1
+            # Cooldown runs from the LAST failed attempt (each failure inside the
+            # window extends it). Keying off tries[0] instead lets failure #5
+            # start a cooldown that has already expired — zero real lockout.
+            return int(COOLDOWN_SECONDS - (now - tries[-1])) + 1
     return 0
 
 

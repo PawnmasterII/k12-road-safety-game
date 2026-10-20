@@ -6,9 +6,25 @@ __pycache__/
 .pytest_cache/
 
 # stray root Unity project (accident) — the real one lives in unity/
-[Ll]ibrary/
-[Pp]rojectSettings/
-[Uu]serSettings/
-[Ll]ogs/
-[Oo]bj/
-[Pp]ackages/
+/[Ll]ibrary/
+/[Pp]rojectSettings/
+/[Uu]serSettings/
+/[Ll]ogs/
+/[Oo]bj/
+/[Pp]ackages/
+
+# Local secrets / databases / tooling
+.env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.log
+**/.claude/settings.local.json
+
+# Unity recovery and ad-hoc captures (existing historical evidence stays tracked)
+unity/Assets/_Recovery/
+unity/Assets/Captures/

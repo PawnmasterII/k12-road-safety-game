@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api, setToken, clearToken } from '../api.js'
+import { api, clearToken } from '../api.js'
 
 // Grade bands mirror the backend modules (content.py). Picking a band
 // highlights the matching module and deep-links into its sample activity.

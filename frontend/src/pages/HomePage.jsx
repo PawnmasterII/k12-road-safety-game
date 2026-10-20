@@ -4,12 +4,16 @@ import { api, getToken } from '../api.js'
 
 export default function HomePage() {
   const [modules, setModules] = useState(null)
+  const [loadError, setLoadError] = useState(false)
   const [me, setMe] = useState(null)
 
   useEffect(() => {
     api('GET', '/modules')
       .then((r) => setModules(r.modules))
-      .catch(() => setModules([]))
+      .catch(() => {
+        setModules([])
+        setLoadError(true)
+      })
     if (getToken()) {
       api('GET', '/auth/me')
         .then((r) => setMe(r.student))
@@ -17,7 +21,14 @@ export default function HomePage() {
     }
   }, [])
 
-  if (modules === null) return <div className="page"><p className="muted">Loading…</p></div>
+  // Announce loading for screen readers instead of a bare ellipsis.
+  if (modules === null) {
+    return (
+      <div className="page">
+        <p className="muted" role="status">Loading adventures…</p>
+      </div>
+    )
+  }
 
   return (
     <div className="page">
@@ -36,8 +47,15 @@ export default function HomePage() {
         )}
       </header>
 
-      <section aria-label="Learning modules">
-        <h2>Pick your adventure</h2>
+      <section aria-labelledby="adventures-heading">
+        <h2 id="adventures-heading">Pick your adventure</h2>
+        {/* A dead API used to render an empty grid with no explanation — the
+            worst possible state during a live demo. */}
+        {loadError && (
+          <p className="form-error" role="alert">
+            We could not load the adventures. Check that the game server is running, then refresh.
+          </p>
+        )}
         <div className="module-grid">
           {modules.map((m) => (
             <article key={m.id} className={`card module-card ${m.my_module ? 'my-module' : ''}`}>
@@ -48,7 +66,13 @@ export default function HomePage() {
               <ul className="topics">
                 {m.topics.map((t) => <li key={t}>{t}</li>)}
               </ul>
-              <Link className="btn btn-small" to={`/activity/${m.id}`}>Play a sample ▶</Link>
+              <Link
+                className="btn btn-small"
+                to={`/activity/${m.id}`}
+                aria-label={`Play a sample of ${m.name}, grades ${m.grade_band}`}
+              >
+                Play a sample ▶
+              </Link>
             </article>
           ))}
         </div>

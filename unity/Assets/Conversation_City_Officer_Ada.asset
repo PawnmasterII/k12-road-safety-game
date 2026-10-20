@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 131e1dca5f7f2ca42be00771cea61f30, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SafeStreets.Conversation
+  speakerName: Officer Ada
+  lines:
+  - Welcome to Safe Travelers, recruit! I'm Officer Ada, your town guide.
+  - 'Three neighbours need a walking buddy to get across these streets: Granny Rose
+    by the grocery, Little Sam by the park path, and Mia down by the library.'
+  - Walk up to them, press SPACE to talk, then stay close while you both cross on
+    the white stripes.
+  - School at the top left, library at the top right, rail crossing on the far west
+    edge - and a quiz zone at each spot. Good luck!
+  closingTip: Rules from the K-12 Traffic Safety Education Resource Guide

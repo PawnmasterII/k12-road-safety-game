@@ -1,9 +1,12 @@
 """E2E phase 2 (run AFTER backend restart): login again, verify progress
-survived the restart — SC-002. Must run against the SAME db as phase 1."""
+survived the restart — SC-002. Must run against the SAME db as phase 1.
+
+Override the frontend with E2E_FRONT — defaults to the documented dev port."""
+import os
 import sys
 from playwright.sync_api import sync_playwright, expect
 
-FRONT = "http://localhost:5173"
+FRONT = os.environ.get("E2E_FRONT", "http://localhost:5173")
 NAME = "Ella<script>alert(1)</script>"
 SCHOOL = "Sunshine Elementary"
 PIN = "1234"

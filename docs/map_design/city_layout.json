@@ -634,7 +634,7 @@
     },
     {
       "type": "lamp",
-      "x": 58,
+      "x": 54.6,
       "y": 24.6,
       "angle": 0
     },
@@ -738,6 +738,12 @@
       "type": "busstop",
       "x": 50,
       "y": 30.8,
+      "angle": 0
+    },
+    {
+      "type": "railroad-gate",
+      "x": 2,
+      "y": 28,
       "angle": 0
     },
     {

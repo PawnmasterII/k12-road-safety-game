@@ -10,7 +10,10 @@ export default function Signup() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const update = (field) => (e) => setForm({ ...form, [field]: e.target.value })
+  // Functional update: chain off the LATEST state, not the render-time closure.
+  // A plain spread ({...form, field}) lets a fast second field (autofill, or a
+  // kid tabbing quickly) overwrite the first field with its stale copy.
+  const update = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }))
 
   async function submit(e) {
     e.preventDefault()

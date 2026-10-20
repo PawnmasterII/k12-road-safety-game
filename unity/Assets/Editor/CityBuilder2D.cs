@@ -6,7 +6,7 @@ using UnityEngine;
 namespace SafeStreets.EditorTools
 {
     /// <summary>
-    /// Builds the full city scene (specs/map_design, draft v1) from
+    /// Builds the full city scene (docs/map_design, draft v1) from
     /// docs/map_design/city_layout.json. JSON uses a top-left origin; Unity is
     /// center-origin, so every y flips: uy = 28 - jy. Street widths, zebra ladder
     /// orientation (rungs parallel to traffic), intersection control props, the
@@ -28,11 +28,11 @@ namespace SafeStreets.EditorTools
 
         public static string Build()
         {
-            string jsonPath = "Packages/map_design/city_layout.json";
-            if (!System.IO.File.Exists(jsonPath))
-                jsonPath = "docs/map_design/city_layout.json"; // project root relative (cwd = unity/)
-            string abs = System.IO.Path.GetFullPath(
-                System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "..", "docs/map_design/city_layout.json"));
+            // Application.dataPath = <repo>/unity/Assets — immune to the caller's CWD
+            // (the old Directory.GetCurrentDirectory()+"/.." only worked when launched
+            // from unity/, which an eval or test-runner context can't guarantee)
+            string abs = System.IO.Path.GetFullPath(System.IO.Path.Combine(
+                Application.dataPath, "..", "..", "docs/map_design/city_layout.json"));
             if (!System.IO.File.Exists(abs))
                 return "FAIL: city_layout.json not found at " + abs;
             var map = JsonUtility.FromJson<CityMap>(System.IO.File.ReadAllText(abs));
@@ -46,6 +46,15 @@ namespace SafeStreets.EditorTools
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             var root = new GameObject("SafeStreetsCity");
             int built = 0;
+
+            // ---- collision policy (demo polish) ----
+            // Shapes used to be plain SpriteRenderers with NO collider, so roads,
+            // sidewalks, ponds and every building were pure paint: the kid walked straight
+            // through the library "into" it, which reads as broken on a demo screen.
+            // MakeSolid() now turns exactly two things solid at the END of the build:
+            // BUILDINGS and WATER. Paint (ground/roads/sidewalks/lines) and decor
+            // (props/labels) stay non-solid, so they can never fence the kid in.
+            var solid = new List<GameObject>();
 
             // ground
             var ground = Shape(root, "Ground", Hex("#5B8C5A"), V(40, 28, 50), new Vector2(80, 56));
@@ -77,42 +86,148 @@ namespace SafeStreets.EditorTools
                 }
             }
 
-            // centerlines (yellow) on the 2-lane streets
+            // centerlines (yellow) on the 2-lane streets — broken at junction boxes
+            // (map polish: a solid line painted straight through an intersection reads
+            // as one road bleeding into the next)
             foreach (var s in map.streets)
             {
                 if (s.lanes < 2) continue;
                 bool h = s.orientation == "H";
-                var go = Shape(root, "Line_" + s.name, Hex("#E8C55A"),
-                    h ? V(s.center.x, s.center.y, -2) : V(s.center.x, s.center.y, -2),
-                    h ? new Vector2(StreetLen(s.from, s.to, 80), 0.16f) : new Vector2(0.16f, StreetLen(s.from, s.to, 56)));
-                go.GetComponent<SpriteRenderer>().sortingOrder = -6; built++;
+                float len = StreetLen(s.from, s.to, h ? 80 : 56);
+                float mid = h ? s.center.x : s.center.y;
+                foreach (var seg in MarkingSegments(mid - len / 2f, mid + len / 2f,
+                    CrossingStreets(map, s, h), h))
+                {
+                    float segLen = seg.y - seg.x, segMid = (seg.x + seg.y) / 2f;
+                    var go = Shape(root, "Line_" + s.name, Hex("#E8C55A"),
+                        h ? V(segMid, s.center.y, -2) : V(s.center.x, segMid, -2),
+                        h ? new Vector2(segLen, 0.16f) : new Vector2(0.16f, segLen));
+                    go.GetComponent<SpriteRenderer>().sortingOrder = -6; built++;
+                }
             }
 
-            // bike lane along the avenue (south side, per draft)
-            var bike = Shape(root, "BikeLane", Hex("#5A9A5A"), V(32, 29.6f, -3), new Vector2(60, 0.8f));
-            bike.GetComponent<SpriteRenderer>().sortingOrder = -5; built++;
+            // bike lane along the avenue (south side, per draft) — broken at the
+            // junctions it passes through (same rule as the centerlines)
+            {
+                var bikeCrossers = new List<Street>();
+                foreach (var p in map.streets)
+                    if (p.orientation == "V" && p.from <= 29.6f && p.to >= 29.6f) bikeCrossers.Add(p);
+                foreach (var seg in MarkingSegments(2f, 62f, bikeCrossers, true))
+                {
+                    var bike = Shape(root, "BikeLane", Hex("#5A9A5A"),
+                        V((seg.x + seg.y) / 2f, 29.6f, -3), new Vector2(seg.y - seg.x, 0.8f));
+                    bike.GetComponent<SpriteRenderer>().sortingOrder = -5; built++;
+                }
+            }
 
             // rail line (west edge)
             var rail = Shape(root, "Rail", Hex("#6B6F75"), V(2, 28, -2), new Vector2(0.9f, 56));
             rail.GetComponent<SpriteRenderer>().sortingOrder = -4; built++;
 
-            // zebra crossings: ladder rungs parallel to traffic across the walking band
+            // zebra crossings: ladder rungs parallel to traffic across the walking band.
+            // Map polish: the JSON centers intersection crosswalks on the junction point,
+            // so BOTH orientations painted their ladders straight through the middle of
+            // the box — and through each other. Real crossings sit on the intersection
+            // LEGS: when a perpendicular street covers the band center, paint one
+            // crossing on each leg instead, clear of the junction box. Mid-block
+            // crossings (school, bus stop) and the set-back roundabout legs are not
+            // inside any junction and keep their JSON positions.
+            var crossings = new List<CrossingZone>();
             foreach (var cw in map.crosswalks)
             {
                 bool acrossHorizontal = cw.angle == 0;   // crosses a horizontal road
-                int rungs = Mathf.Max(3, Mathf.RoundToInt(cw.length / 0.75f));
-                for (int i = 0; i < rungs; i++)
+                var centers = new List<float> { acrossHorizontal ? cw.x : cw.y };
+                if (acrossHorizontal)
                 {
-                    float t = (i + 0.5f) / rungs - 0.5f;
-                    // R4: rungs must be placed at the CROSSING (world pos), not at a
-                    // child-local offset — Shape() sets world position, so the old
-                    // child approach teleported all rungs to the map origin.
-                    var go = Shape(root, "rung", Hex("#EBECE0"),
-                        acrossHorizontal ? V(cw.x, cw.y + t * cw.length, -3)
-                                         : V(cw.x + t * cw.length, cw.y, -3),
-                        acrossHorizontal ? new Vector2(2.2f, 0.32f) : new Vector2(0.32f, 2.2f));
-                    go.GetComponent<SpriteRenderer>().sortingOrder = -3; built++;
+                    foreach (var v in map.streets)
+                        if (v.orientation == "V" && cw.y >= v.from && cw.y <= v.to
+                            && Mathf.Abs(cw.x - v.center.x) <= v.width / 2f)
+                        {
+                            float d = v.width / 2f + 1.1f + 0.45f;   // junction edge + half rung + setback
+                            centers = new List<float> { v.center.x - d, v.center.x + d };
+                            break;
+                        }
                 }
+                else
+                {
+                    foreach (var h in map.streets)
+                        if (h.orientation == "H" && cw.x >= h.from && cw.x <= h.to
+                            && Mathf.Abs(cw.y - h.center.y) <= h.width / 2f)
+                        {
+                            float d = h.width / 2f + 1.1f + 0.45f;
+                            centers = new List<float> { h.center.y - d, h.center.y + d };
+                            break;
+                        }
+                }
+                foreach (float c in centers)
+                {
+                    int rungs = Mathf.Max(3, Mathf.RoundToInt(cw.length / 0.75f));
+                    var crossingGo = new GameObject("Crossing_" + crossings.Count);
+                    crossingGo.transform.SetParent(root.transform);
+                    var center = acrossHorizontal ? V(c, cw.y, 0) : V(cw.x, c, 0);
+                    crossingGo.transform.position = center;
+                    var crossing = crossingGo.AddComponent<CrossingZone>();
+                    crossing.roadRunsAlongX = acrossHorizontal;
+                    crossing.roadCenter = center;
+                    crossing.roadHalfExtent = cw.length * 0.5f;
+                    float paintedLength = cw.length * (1f - 1f / rungs) + 0.32f;
+                    var size = acrossHorizontal ? new Vector2(2.2f, paintedLength) : new Vector2(paintedLength, 2.2f);
+                    crossing.corridor = new Rect((Vector2)center - size * 0.5f, size);
+                    crossings.Add(crossing);
+                    for (int i = 0; i < rungs; i++)
+                    {
+                        float t = (i + 0.5f) / rungs - 0.5f;
+                        // R4: rungs must be placed at the CROSSING (world pos), not at a
+                        // child-local offset — Shape() sets world position, so the old
+                        // child approach teleported all rungs to the map origin.
+                        var go = Shape(root, "rung", Hex("#EBECE0"),
+                            acrossHorizontal ? V(c, cw.y + t * cw.length, -3)
+                                             : V(cw.x + t * cw.length, c, -3),
+                            acrossHorizontal ? new Vector2(2.2f, 0.32f) : new Vector2(0.32f, 2.2f));
+                        go.GetComponent<SpriteRenderer>().sortingOrder = -3; built++;
+                    }
+                }
+            }
+
+            // props from the layout JSON (map polish: these 39 placed markers were
+            // parsed but never drawn — traffic lights at the TRUE junction corners,
+            // stop signs, trees, lamps, hydrants, benches, bus stops, the rail gate.
+            // The old two-square signal stand-ins were wrongly positioned and
+            // duplicated this data, so the stand-ins are gone.)
+            foreach (var p in map.props)
+            {
+                Color c; Vector2 sz; int order = 5; bool circle = false;
+                switch (p.type)
+                {
+                    case "trafficlight":  c = Hex("#2C3E50"); sz = new Vector2(0.45f, 0.45f); break;
+                    case "stopsign":      c = Hex("#C0392B"); sz = new Vector2(0.40f, 0.40f); break;
+                    case "tree":          c = Hex("#2E7D46"); sz = new Vector2(1.5f, 1.5f); order = 2; circle = true; break;
+                    case "lamp":          c = Hex("#F4D03F"); sz = new Vector2(0.35f, 0.35f); order = 2; break;
+                    case "hydrant":       c = Hex("#E74C3C"); sz = new Vector2(0.35f, 0.35f); order = 2; break;
+                    case "bench":         c = Hex("#8D6E63"); sz = new Vector2(0.9f, 0.35f); order = 2; break;
+                    case "busstop":       c = Hex("#34495E"); sz = new Vector2(1.3f, 0.45f); break;
+                    case "railroad-gate": c = Hex("#C0392B"); sz = new Vector2(2.8f, 0.28f); break;
+                    case "crossbuck":     c = Hex("#ECF0F1"); sz = new Vector2(0.8f, 0.8f); break;
+                    default:              c = Hex("#7F8C8D"); sz = new Vector2(0.4f, 0.4f); break;
+                }
+                GameObject pgo;
+                if (circle)
+                {
+                    pgo = new GameObject("Prop_" + p.type);
+                    pgo.transform.SetParent(root.transform);
+                    pgo.transform.position = V(p.x, p.y, 5);
+                    var csr = pgo.AddComponent<SpriteRenderer>();
+                    csr.sprite = SceneGeo.CircleSpritePublic();
+                    csr.color = c;
+                    csr.sortingOrder = order;
+                    SceneGeo.SetWorldSize(csr, sz);
+                }
+                else
+                {
+                    pgo = Shape(root, "Prop_" + p.type, c, V(p.x, p.y, 5), sz);
+                    pgo.GetComponent<SpriteRenderer>().sortingOrder = order;
+                }
+                built++;
             }
 
             // landmarks
@@ -131,35 +246,37 @@ namespace SafeStreets.EditorTools
                 if (go.layer == 0) go.layer = LayerMask.NameToLayer("Collision") >= 0 ? LayerMask.NameToLayer("Collision") : 0;
             }
 
-            // intersections: control props
+            // intersections: lights/signs now come from map.props at the true junction
+            // corners (see props loop above). Only the roundabout is geometry, so it
+            // stays here.
             foreach (var it in map.intersections)
             {
-                switch (it.type)
-                {
-                    case "signal":
-                        PropMarker(root, "Signal", V(it.x - 1.6f, it.y - 1.6f, 5), Hex("#2C3E50"), 0.5f); built++;
-                        PropMarker(root, "Signal", V(it.x + 1.6f, it.y + 1.6f, 5), Hex("#2C3E50"), 0.5f); built++;
-                        break;
-                    case "stop4":
-                    case "stop2":
-                        PropMarker(root, "Stop", V(it.x - 1.4f, it.y + 1.4f, 5), Hex("#C0392B"), 0.45f); built++;
-                        break;
-                    case "roundabout":
-                        var ra = Shape(root, "Roundabout", Hex("#4A4D52"), V(it.x, it.y, -3), new Vector2(4.2f, 4.2f));
-                        ra.GetComponent<SpriteRenderer>().sortingOrder = -3;
-                        var rc = ra.AddComponent<CircleCollider2D>(); rc.radius = 2.1f;
-                        built++;
-                        break;
-                }
+                if (it.type != "roundabout") continue;
+                // circle, not square: the CircleCollider2D is r=2.1, and a gray square
+                // over the junction read as a road block, not a roundabout (map polish)
+                var ring = new GameObject("Roundabout");
+                ring.transform.SetParent(root.transform);
+                ring.transform.position = V(it.x, it.y, -3);
+                var rsr = ring.AddComponent<SpriteRenderer>();
+                rsr.sprite = SceneGeo.CircleSpritePublic();
+                rsr.color = Hex("#4A4D52");
+                rsr.sortingOrder = -3;
+                SceneGeo.SetWorldSize(rsr, new Vector2(4.2f, 4.2f));
+                var island = new GameObject("RoundaboutIsland");
+                island.transform.SetParent(root.transform);
+                island.transform.position = V(it.x, it.y, -3.5f);   // z closer: island always over the ring
+                var isr = island.AddComponent<SpriteRenderer>();
+                isr.sprite = SceneGeo.CircleSpritePublic();
+                isr.color = Hex("#5B8C5A");
+                isr.sortingOrder = -3;   // same order: drawn after the ring, on top
+                SceneGeo.SetWorldSize(isr, new Vector2(2.3f, 2.3f));
+                var rc = ring.AddComponent<CircleCollider2D>(); rc.radius = 2.1f;
+                built++;
             }
 
-            // quiz zones (walk-in QuizZone)
-            string[] zoneBanks =
-            {
-                "rr-florida", "le-crossing", "sh-school-bike", "st-riding", "rr-florida",
-                "parkinglot-safety", "bus-stop-rules", "signals-signs", "railroad-crossing", "driveway-blindspot"
-            };
-            int zi = 0, zonesSeen = 0, zonesNullBank = 0; string zoneDebug = "";
+            // quiz zones (walk-in QuizZone) — each zone now owns its own bank id via
+            // ActivityIdForZone, so no zone shares (and none silently loses) a bank.
+            int zonesSeen = 0, zonesNullBank = 0; string zoneDebug = "";
             foreach (var z in map.zones)
             {
                 zonesSeen++;
@@ -168,6 +285,7 @@ namespace SafeStreets.EditorTools
                     var pond = Shape(root, "Pond", Hex("#4A7A96"), V(z.x + z.w / 2, z.y + z.h / 2, -2),
                         new Vector2(z.w, z.h));
                     pond.GetComponent<SpriteRenderer>().sortingOrder = -2; built++;
+                    solid.Add(pond);       // water: the kid should not swim
                     continue;
                 }
                 if (z.kind == "school-zone")
@@ -175,24 +293,57 @@ namespace SafeStreets.EditorTools
                     var szg = Shape(root, "SchoolZone", new Color(1f, 0.95f, 0.3f, 0.30f),
                         V(z.x + z.w / 2, z.y + z.h / 2, -2), new Vector2(z.w, z.h));
                     szg.GetComponent<SpriteRenderer>().sortingOrder = -3; built++;
-                    Label(root, "SCHOOL ZONE", V(z.x + z.w - 3, z.y + 0.4f, 0), 0.8f, -1); built++;
+                    // Demo polish: sat on the y=0 sidewalk line where the crossing guard
+                    // walks; lift it to the top edge of the painted zone.
+                    Label(root, "SCHOOL ZONE", V(z.x + z.w / 2, z.y + z.h - 0.35f, 0), 0.8f, -1); built++;
                     continue;
                 }
-                string bankId = zoneBanks[zi % zoneBanks.Length]; zi++;
-                zoneDebug += z.name + "->" + bankId + " ";
-                var bankAsset = LoadOrCreateBank(bankId);
-                MakeQuizZone(root, "Quiz_" + bankId,
+                // Demo polish: a MISSING bank used to leave a zone with bank == null, i.e.
+                // a gold rectangle that says QUIZ and does nothing when SPACE is pressed.
+                // Map the zone to its OWN activity id instead of sharing one bank object
+                // across zones, and skip (loudly) any zone whose bank failed to load.
+                // zone.name -> "<activityId>|quiz: <Zone Name>" (see ActivityIdForZone).
+                string activity = ActivityIdForZone(z.name);
+                zoneDebug += z.name + "->" + activity + " ";
+                var bankAsset = LoadOrCreateBank(activity);
+                if (bankAsset == null)
+                {
+                    zonesNullBank++;
+                    zoneDebug += "(NO BANK) ";
+                    continue;
+                }
+                MakeQuizZone(root, "Quiz_" + activity,
                     V(z.x + z.w / 2, z.y + z.h / 2, -3), new Vector2(z.w, z.h), bankAsset, "QUIZ: " + z.name);
                 built++;
             }
 
-            // NPCs (talk/escort cast at their posts)
+            // ---- crossings + NPC cast (demo polish) ----
+            var cast = CityContent.All();
             foreach (var npc in map.npcs)
             {
-                MakeNpc(root, npc.name, Hex("#F28C26"), V(npc.x, npc.y, 0), null, false);
-                Label(root, npc.name, V(npc.x, npc.y + 0.9f, 0), 0.62f, 5);
+                var role = System.Array.Find(cast, entry => entry.name == npc.name);
+                Conversation conversation = role != null ? role.conv : null;
+                if (conversation == null)
+                {
+                    CityContent.EscortScript(npc.name, out var lines, out var tip);
+                    conversation = CityContent.Conv(npc.name, lines);
+                    conversation.closingTip = tip;
+                }
+                string path = "Assets/Conversation_City_" + npc.name.Replace(" ", "_") + ".asset";
+                var saved = AssetDatabase.LoadAssetAtPath<Conversation>(path);
+                if (saved == null) { AssetDatabase.CreateAsset(conversation, path); saved = conversation; }
+                else { EditorUtility.CopySerialized(conversation, saved); Object.DestroyImmediate(conversation); EditorUtility.SetDirty(saved); }
+                MakeNpc(root, npc.name, Hex("#F28C26"), V(npc.x, npc.y, 0), saved, false);
+                Label(root, npc.name, V(npc.x, npc.y - 0.9f, 0), 0.62f, 5);
                 built += 2;
             }
+            foreach (var obstacle in solid)
+            {
+                var collider = obstacle.GetComponent<BoxCollider2D>();
+                if (collider == null) collider = obstacle.AddComponent<BoxCollider2D>();
+                collider.size = obstacle.GetComponent<SpriteRenderer>().sprite.bounds.size;
+            }
+            AssetDatabase.SaveAssets();
 
             // player spawn (house corner, per draft)
             var player = new GameObject("Player");
@@ -247,6 +398,21 @@ namespace SafeStreets.EditorTools
         /// session; this loads OR re-creates the five new banks so quiz zones can
         /// never silently skip. Content = Agent B's pedagogy file, verbatim.
         /// </summary>
+        private static string ActivityIdForZone(string name)
+        {
+            switch (name)
+            {
+                case "Parking lot": return "parkinglot-safety";
+                case "Bus stop": return "bus-stop-rules";
+                case "Bike lane": return "sh-school-bike";
+                case "Railroad crossing": return "railroad-crossing";
+                case "Roundabout approach": return "signals-signs";
+                case "Gas forecourt": return "driveway-blindspot";
+                case "Teen driver corridor": return "rr-florida";
+                default: return "le-crossing";
+            }
+        }
+
         private static SafeStreets.QuizBank LoadOrCreateBank(string id)
         {
             var existing = AssetDatabase.LoadAssetAtPath<SafeStreets.QuizBank>("Assets/Quiz_" + id + ".asset");
@@ -345,17 +511,53 @@ namespace SafeStreets.EditorTools
         private static float StreetLen(float from, float to, float full)
             => (to - from) >= full - 0.01f ? full : (to - from);
 
+        /// <summary>Streets perpendicular to s that actually cross it (marking-break candidates).</summary>
+        private static List<Street> CrossingStreets(CityMap map, Street s, bool sIsHorizontal)
+        {
+            var list = new List<Street>();
+            foreach (var p in map.streets)
+            {
+                if ((p.orientation == "H") == sIsHorizontal) continue;   // same orientation never crosses
+                bool coversS = sIsHorizontal ? (p.from <= s.center.y && p.to >= s.center.y)
+                                             : (p.from <= s.center.x && p.to >= s.center.x);
+                bool coveredByS = sIsHorizontal ? (s.from <= p.center.x && s.to >= p.center.x)
+                                                : (s.from <= p.center.y && s.to >= p.center.y);
+                if (coversS && coveredByS) list.Add(p);
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Map polish: splits [from,to] at each crossing street's band, so centerlines
+        /// and the bike lane break at junction boxes instead of painting through them.
+        /// </summary>
+        private static List<Vector2> MarkingSegments(float from, float to, List<Street> crossers,
+            bool brokenStreetIsHorizontal)
+        {
+            var segs = new List<Vector2>();
+            var bands = new List<Vector2>();
+            foreach (var c in crossers)
+            {
+                float m = brokenStreetIsHorizontal ? c.center.x : c.center.y;   // band along the broken axis
+                bands.Add(new Vector2(m - c.width / 2f, m + c.width / 2f));
+            }
+            bands.Sort((a, b) => a.x.CompareTo(b.x));
+            float cursor = from;
+            foreach (var b in bands)
+            {
+                if (b.x >= to || b.y <= cursor) continue;
+                if (b.x > cursor + 0.05f) segs.Add(new Vector2(cursor, b.x));
+                cursor = Mathf.Max(cursor, b.y);
+            }
+            if (to > cursor + 0.05f) segs.Add(new Vector2(cursor, to));
+            return segs;
+        }
+
         private static int Sidewalk(GameObject root, Vector3 pos, float w, float h)
         {
             var go = Shape(root, "Sidewalk", Hex("#B9BDC4"), pos, new Vector2(w, h));
             go.GetComponent<SpriteRenderer>().sortingOrder = -7;
             return 1;
-        }
-
-        private static void PropMarker(GameObject root, string name, Vector3 pos, Color color, float size)
-        {
-            var go = Shape(root, name, color, pos, new Vector2(size, size));
-            go.GetComponent<SpriteRenderer>().sortingOrder = 5;
         }
 
         private static void Label(GameObject root, string text, Vector3 pos, float size, int order)
@@ -415,6 +617,7 @@ namespace SafeStreets.EditorTools
             else
             {
                 var npc = go.AddComponent<SafeStreets.DialogNPC>();
+                npc.conversation = conv;
                 npc.interactLabel = name;
                 go.AddComponent<SafeStreets.FogEntity>();
             }
@@ -433,6 +636,5 @@ namespace SafeStreets.EditorTools
             return Color.magenta;
         }
 
-        private static Vector3 V2(float jx, float jy, float z) => V(jx, jy, z);
     }
 }
