@@ -28,3 +28,8 @@ __pycache__/
 # Unity recovery and ad-hoc captures (existing historical evidence stays tracked)
 unity/Assets/_Recovery/
 unity/Assets/Captures/
+
+# AI agent tooling (Claude skills, Spec Kit) — local only, not part of the repo
+.claude/
+.specify/
+unity/.claude/
